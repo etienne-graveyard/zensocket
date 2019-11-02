@@ -1,18 +1,18 @@
-import { CreateTopology, createClient, createServer } from '../src';
+import { CreateTopology, ZenSocket } from '../src';
 
 type Topo = CreateTopology<{
-  clientRequests: {
+  localRequests: {
     Login: {
       request: { user: string; password: string };
       response: { foo: string };
     };
   };
-  serverRequests: {};
-  clientEmits: {};
-  serverEmits: {};
+  remoteRequests: {};
+  localEmits: {};
+  remoteEmits: {};
 }>;
 
-const client = createClient<Topo>({
+const client = ZenSocket.createLocal<Topo>({
   request: {},
   emit: {},
   outgoing: message => {
@@ -23,7 +23,7 @@ const client = createClient<Topo>({
 
 client.request('Login', { user: 'foo', password: 'bar' });
 
-const server = createServer<Topo>({
+const server = ZenSocket.createRemote<Topo>({
   request: {
     Login: async ({ password, user }) => {
       return { foo: '' };
