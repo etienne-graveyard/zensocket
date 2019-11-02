@@ -26,6 +26,7 @@ client.request('Login', { user: 'foo', password: 'bar' });
 const server = ZenSocket.createRemote<Topo>({
   request: {
     Login: async ({ password, user }) => {
+      console.log(password, user);
       return { foo: '' };
     },
   },

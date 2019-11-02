@@ -1,6 +1,6 @@
 {
   "name": "zensocket",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.0",
   "license": "MIT",
   "author": "Etienne Dldc <e.deladonchamps@gmail.com>",
   "files": [
@@ -10,8 +10,8 @@
   "module": "dist/zensocket.esm.js",
   "typings": "dist/index.d.ts",
   "scripts": {
-    "build": "tsdx build --target node",
-    "start": "tsdx watch --target node",
+    "build": "tsdx build --target web",
+    "start": "tsdx watch --target web",
     "test": "tsdx test",
     "typecheck": "tsc --noEmit",
     "pub": "yarn build && npx np"
