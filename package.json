@@ -1,5 +1,5 @@
 {
-  "name": "@alerion/boing",
+  "name": "zensocket",
   "version": "1.0.0",
   "license": "MIT",
   "author": "Etienne Dldc <e.deladonchamps@gmail.com>",
@@ -7,7 +7,7 @@
     "dist"
   ],
   "main": "dist/index.js",
-  "module": "dist/boing.esm.js",
+  "module": "dist/zensocket.esm.js",
   "typings": "dist/index.d.ts",
   "scripts": {
     "build": "tsdx build --target node",
