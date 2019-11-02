@@ -1,196 +1,122 @@
 import cuid from 'cuid';
-import { SubscribeMethod } from 'suub';
 
-export type ConnectionRequestId = string;
-
-export interface TopologyItem {
-  request: unknown;
-  response: unknown;
+export interface RequestItem {
+  request: object | null;
+  response: object | null;
 }
 
-export interface TopologyBase {
-  [name: string]: TopologyItem;
+export interface Requests {
+  [name: string]: RequestItem;
 }
 
-export type CreateTopology<T extends TopologyBase> = T;
-
-export interface ConnectionRequest<Topology extends TopologyBase> {
-  type: 'REQUEST';
-  id: ConnectionRequestId;
-  data: Topology[keyof Topology]['request'];
+export interface Emits {
+  [name: string]: object | null;
 }
 
-export interface ConnectionResponse<Topology extends TopologyBase> {
-  type: 'RESPONSE';
-  responseTo: ConnectionRequestId;
-  data: Topology[keyof Topology]['response'];
+export interface Topology {
+  clientRequests: Requests;
+  serverRequests: Requests;
+  clientEmits: Emits;
+  serverEmits: Emits;
 }
 
-export interface ConnectionEmit<Emit> {
-  type: 'EMIT';
-  data: Emit;
+export type CreateTopology<T extends Topology> = T;
+
+interface LocalTopo {
+  localRequests: Requests;
+  localEmits: Emits;
+  remoteRequests: Requests;
+  remoteEmits: Emits;
 }
 
-export type LocalMessage<LocalTopology extends TopologyBase, RemoteTopology extends TopologyBase, LocalEmit> =
-  | ConnectionRequest<LocalTopology>
-  | ConnectionResponse<RemoteTopology>
-  | ConnectionEmit<LocalEmit>;
+type CreateLocalTopo<T extends LocalTopo> = T;
 
-export type RemoteMessage<LocalTopology extends TopologyBase, RemoteTopology extends TopologyBase, RemoteEmit> =
-  | ConnectionResponse<LocalTopology>
-  | ConnectionRequest<RemoteTopology>
-  | ConnectionEmit<RemoteEmit>;
+type ServerTopo<T extends Topology> = CreateLocalTopo<{
+  localRequests: T['serverRequests'];
+  localEmits: T['serverEmits'];
+  remoteRequests: T['clientRequests'];
+  remoteEmits: T['clientEmits'];
+}>;
 
-export interface Connection<LocalTopology extends TopologyBase, LocalEmit> {
-  request<K extends keyof LocalTopology>(
-    key: K,
-    message: LocalTopology[K]['request']
-  ): Promise<LocalTopology[K]['response']>;
-  emit(message: LocalEmit): void;
-  idle(): Promise<void>;
+type ClientTopo<T extends Topology> = CreateLocalTopo<{
+  localRequests: T['clientRequests'];
+  localEmits: T['clientEmits'];
+  remoteRequests: T['serverRequests'];
+  remoteEmits: T['serverEmits'];
+}>;
+
+interface Server<T extends LocalTopo> {
+  request: {
+    [K in keyof T['localRequests']]: (
+      args: T['localRequests'][K]['request']
+    ) => Promise<T['localRequests'][K]['response']>;
+  };
+  emit: {
+    [K in keyof T['localEmits']]: (args: T['localEmits'][K]) => void;
+  };
+  incoming: (message: object) => void;
 }
 
-export const Connection = {
-  create: createConnection,
-};
+interface Hander<T extends LocalTopo> {
+  request: {
+    [K in keyof T['remoteRequests']]: (
+      data: T['remoteRequests'][K]['request']
+    ) => Promise<T['remoteRequests'][K]['response']>;
+  };
+  emit: {
+    [K in keyof T['remoteEmits']]: (args: T['remoteEmits'][K]) => void;
+  };
+  outgoing: (message: object) => void;
+}
 
 interface PromiseActions {
   resolve(data: unknown): void;
   reject(error: unknown): void;
 }
 
-export interface Socket<
-  LocalTopology extends TopologyBase,
-  RemoteTopology extends TopologyBase,
-  LocalEmit,
-  RemoteEmit
-> {
-  onMessage: SubscribeMethod<RemoteMessage<LocalTopology, RemoteTopology, RemoteEmit>>;
-  onClose: SubscribeMethod<void>;
-  onOpen: SubscribeMethod<void>;
-  connect: () => Promise<void>;
-  emit(message: LocalMessage<LocalTopology, RemoteTopology, LocalEmit>): void;
+interface MessageInternal {
+  type: string;
+  kind: 'EMIT' | 'REQUEST' | 'RESPONSE';
+  id: string;
+  data: object | null;
 }
 
-type Switch<Topology extends TopologyBase> = {
-  [K in keyof Topology]: (msg: Topology[K]['request']) => Promise<Topology[K]['response']>;
-};
-
-interface Options<LocalTopology extends TopologyBase, RemoteTopology extends TopologyBase, LocalEmit, RemoteEmit> {
-  socket: Socket<LocalTopology, RemoteTopology, LocalEmit, RemoteEmit>;
-  requestIs: (msg: RemoteTopology[keyof RemoteTopology]['request'], key: keyof RemoteTopology) => boolean;
-  onEmit: (msg: RemoteEmit) => void;
-  onRequest: Switch<RemoteTopology>;
+function isMessage(message: any): message is MessageInternal {
+  if ('type' in message && 'kind' in message && 'id' in message && 'data' in message) {
+    const mess = message as any;
+    if (
+      typeof mess.type === 'string' &&
+      typeof mess.id === 'string' &&
+      ['EMIT', 'REQUEST', 'RESPONSE'].indexOf(mess.kind) >= 0
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-interface IdleQueueItem {
-  resolve: () => void;
-  reject: () => void;
+export function createClient<T extends Topology>(handler: Hander<ClientTopo<T>>): Server<ClientTopo<T>> {
+  return create(handler);
 }
 
-function createConnection<
-  LocalTopology extends TopologyBase,
-  RemoteTopology extends TopologyBase,
-  LocalEmit,
-  RemoteEmit
->(options: Options<LocalTopology, RemoteTopology, LocalEmit, RemoteEmit>): Connection<LocalTopology, LocalEmit> {
-  const { socket, onEmit, requestIs, onRequest } = options;
+export function createServer<T extends Topology>(handler: Hander<ServerTopo<T>>): Server<ServerTopo<T>> {
+  return create(handler);
+}
 
-  let idleQueue: Array<IdleQueueItem> = [];
+export function create(handler: Hander<any>): Server<any> {
+  const requests: Map<string, PromiseActions> = new Map();
 
-  const requests: Map<ConnectionRequestId, PromiseActions> = new Map();
-
-  function resolveIdle() {
-    while (requests.size === 0 && idleQueue.length > 0) {
-      const next = idleQueue.shift();
-      if (next) {
-        next.resolve();
-      }
-    }
-  }
-
-  socket.onClose(() => {
-    // reject all item in the queue
-    while (idleQueue.length > 0) {
-      const next = idleQueue.shift();
-      if (next) {
-        next.reject();
-      }
-    }
-  });
-
-  socket.onMessage(async message => {
-    if (message.type === 'RESPONSE') {
-      const actions = requests.get(message.responseTo);
-      if (!actions) {
-        throw new Error(`Invalid response`);
-      }
-      requests.delete(message.responseTo);
-      actions.resolve(message.data);
-      resolveIdle();
-      return;
-    } else if (message.type === 'REQUEST') {
-      const keys = Object.keys(onRequest);
-      const key = keys.find((key): boolean => requestIs(message.data, key));
-      if (!key) {
-        throw new Error('Invalid message');
-      }
-      const requestHandler = onRequest[key];
-      const responseData = await requestHandler(message.data);
-      const response: ConnectionResponse<RemoteTopology> = {
-        type: 'RESPONSE',
-        responseTo: message.id,
-        data: responseData,
-      };
-      socket.emit(response);
-      return;
-    } else if (message.type === 'EMIT') {
-      onEmit(message.data);
-      return;
-    } else {
-      throw new Error('Invalid message');
-    }
-  });
-
-  function request<K extends keyof LocalTopology>(
-    _key: K,
-    message: LocalTopology[K]['request']
-  ): Promise<LocalTopology[K]['response']> {
-    return new Promise((resolve, reject): void => {
-      const request: ConnectionRequest<LocalTopology> = {
-        type: 'REQUEST',
-        id: cuid(),
-        data: message,
-      };
-      requests.set(request.id, { resolve, reject });
-      socket.emit(request);
-    });
-  }
-
-  function send(message: LocalEmit): void {
-    const emit: ConnectionEmit<LocalEmit> = {
-      type: 'EMIT',
-      data: message,
-    };
-    socket.emit(emit);
-  }
-
-  async function idle(): Promise<void> {
-    await socket.connect();
-    if (requests.size === 0) {
-      return Promise.resolve();
-    }
-    const prom = new Promise<void>((resolve, reject) => {
-      idleQueue.push({ resolve, reject: () => reject('Connection Error') });
-    });
-    return prom;
-  }
-
-  const result: Connection<LocalTopology, LocalEmit> = {
-    emit: send,
-    request,
-    idle,
+  return {
+    incoming,
   };
 
-  return result;
+  function incoming(message: object) {
+    if (isMessage(message)) {
+      console.log(message);
+
+      return;
+    }
+    console.warn('Invalid message');
+    return;
+  }
 }
