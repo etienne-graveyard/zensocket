@@ -1,0 +1,26 @@
+{
+  "name": "@alerion/boing",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "Etienne Dldc <e.deladonchamps@gmail.com>",
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/boing.esm.js",
+  "typings": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsdx build --target node",
+    "start": "tsdx watch --target node",
+    "test": "tsdx test",
+    "typecheck": "tsc --noEmit",
+    "pub": "yarn build && npx np"
+  },
+  "dependencies": {
+    "cuid": "^2.1.6",
+    "suub": "^1.4.1"
+  },
+  "devDependencies": {
+    "tsdx": "^0.11.0"
+  }
+}
