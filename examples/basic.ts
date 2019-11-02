@@ -15,9 +15,13 @@ type Topo = CreateTopology<{
 const client = createClient<Topo>({
   request: {},
   emit: {},
+  outgoing: message => {
+    console.log('send to server', message);
+    server.incoming(message);
+  },
 });
 
-client.request.Login({ user: 'foo', password: 'bar' });
+client.request('Login', { user: 'foo', password: 'bar' });
 
 const server = createServer<Topo>({
   request: {
@@ -26,4 +30,8 @@ const server = createServer<Topo>({
     },
   },
   emit: {},
+  outgoing: message => {
+    console.log('send to client', message);
+    client.incoming(message);
+  },
 });
