@@ -112,7 +112,7 @@ function create(handler: Hander<any>): Server<any> {
           handler.outgoing(response);
         });
       }
-      if (message.type === 'EMIT') {
+      if (message.kind === 'EMIT') {
         const emitHandler = handler.emit[message.type];
         if (!emitHandler) {
           throw new Error('Invalid message');
