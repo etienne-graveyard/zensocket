@@ -2,10 +2,9 @@ export { ZenSocket } from "./ZenSocket";
 export { ZenSocketError } from "./ZenSocketError";
 export {
   CreateTopology,
-  Topology,
   RemoteTopology,
+  Topology,
   Hander,
   Server,
-  AnyKey,
-  MessageDef
+  Request
 } from "./types";

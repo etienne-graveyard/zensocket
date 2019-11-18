@@ -1,20 +1,20 @@
-import { CreateTopology, ZenSocket, MessageDef } from "../src";
+import { CreateTopology, ZenSocket, Request } from "../src";
 
 type UnauthenticatedResponse = { Unauthenticated: { error: string } };
 type PongResponse = { Pong: { pong: number } };
 type OopsResponse = { Oops: { error: string } };
 type BarResponse = { Bar: { bar: string } };
 
-type AuthenticatedMessageDef<Req, Res> = MessageDef<
+type AuthenticatedRequest<Req, Res> = Request<
   Req,
   Res & UnauthenticatedResponse
 >;
 
 type Topo = CreateTopology<{
   localRequests: {
-    Ping: MessageDef<{ ping: number }, PongResponse & OopsResponse>;
-    GetAll: AuthenticatedMessageDef<{}, PongResponse & OopsResponse>;
-    Foo: AuthenticatedMessageDef<{}, BarResponse>;
+    Ping: Request<{ ping: number }, PongResponse & OopsResponse>;
+    GetAll: AuthenticatedRequest<{}, PongResponse & OopsResponse>;
+    Foo: AuthenticatedRequest<{}, BarResponse>;
   };
   remoteRequests: {};
   localEmits: {};

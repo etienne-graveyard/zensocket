@@ -6,11 +6,11 @@ interface MessageResponse {
   [OPAQUE]: true;
 }
 
-type ResponseGroupDef = { [key: string]: object };
+type ResponseGroup = { [key: string]: object };
 
-type GroupDef = { [key: string]: MessageDef<any, any> };
+type RequestGroup = { [key: string]: Request<any, any> };
 
-export type MessageDef<Data, Res extends ResponseGroupDef> = {
+export type Request<Data, Res extends ResponseGroup> = {
   [OPAQUE]: true;
   data: Data;
   res: Res;
@@ -21,8 +21,8 @@ export interface EmitsDef {
 }
 
 export interface Topology {
-  localRequests: GroupDef;
-  remoteRequests: GroupDef;
+  localRequests: RequestGroup;
+  remoteRequests: RequestGroup;
   localEmits: EmitsDef;
   remoteEmits: EmitsDef;
 }
@@ -39,7 +39,7 @@ export type RemoteTopology<T extends Topology> = CreateTopology<{
 
 // Handler
 
-type RequestResolved<M extends GroupDef> = {
+type RequestResolved<M extends RequestGroup> = {
   [K in keyof M]: {
     type: K;
     data: M[K]["data"];
@@ -49,13 +49,13 @@ type RequestResolved<M extends GroupDef> = {
   };
 };
 
-export type RequestIs<M extends GroupDef> = {
+export type RequestIs<M extends RequestGroup> = {
   [K in keyof M]: (
     message: AnyKey<RequestResolved<M>>
   ) => message is RequestResolved<M>[K];
 };
 
-type RequestHandler<M extends GroupDef> = AnyKey<M> extends never
+type RequestHandler<M extends RequestGroup> = AnyKey<M> extends never
   ? null
   : (
       message: AnyKey<RequestResolved<M>>,
@@ -72,20 +72,20 @@ export interface Hander<T extends Topology> {
 
 // Send
 
-type ResponseResolved<M extends ResponseGroupDef> = {
+type ResponseResolved<M extends ResponseGroup> = {
   [K in keyof M]: {
     type: K;
     data: M[K];
   };
 };
 
-export type ResponseIs<M extends ResponseGroupDef> = {
+export type ResponseIs<M extends ResponseGroup> = {
   [K in keyof M]: (
     message: AnyKey<ResponseResolved<M>>
   ) => message is ResponseResolved<M>[K];
 };
 
-export type ResponseObject<Res extends GroupDef> = {
+export type ResponseObject<Res extends RequestGroup> = {
   response: AnyKey<ResponseResolved<Res>>;
   is: ResponseIs<Res>;
 };
@@ -94,7 +94,7 @@ export type SendRequestOptions = {
   timeout?: number;
 };
 
-export type SendRequest<M extends GroupDef> = {
+export type SendRequest<M extends RequestGroup> = {
   [K in keyof M]: (
     data: M[K]["data"],
     options?: SendRequestOptions
