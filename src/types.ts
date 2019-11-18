@@ -90,8 +90,15 @@ export type ResponseObject<Res extends GroupDef> = {
   is: ResponseIs<Res>;
 };
 
+export type SendRequestOptions = {
+  timeout?: number;
+};
+
 export type SendRequest<M extends GroupDef> = {
-  [K in keyof M]: (data: M[K]["data"]) => Promise<ResponseObject<M[K]["res"]>>;
+  [K in keyof M]: (
+    data: M[K]["data"],
+    options?: SendRequestOptions
+  ) => Promise<ResponseObject<M[K]["res"]>>;
 };
 
 export type SendEmit<M extends EmitsDef> = {
@@ -111,11 +118,6 @@ export interface Server<T extends Topology> {
 // Internal
 
 export type AnyKey<T extends { [key: string]: any }> = T[keyof T];
-
-export interface PromiseActions<T> {
-  resolve(data: T): void;
-  reject(error: any): void;
-}
 
 export interface MessageInternal {
   type: string;

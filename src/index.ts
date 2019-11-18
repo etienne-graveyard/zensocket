@@ -1,4 +1,5 @@
 export { ZenSocket } from "./ZenSocket";
+export { ZenSocketError } from "./ZenSocketError";
 export {
   CreateTopology,
   Topology,

@@ -35,7 +35,8 @@ const server = ZenSocket.createRemote<Topo>({
     if (is.Ping(message)) {
       return message.response.Pong({ pong: message.data.ping });
     }
-    return message.response.Unauthenticated({ error: "yolo" });
+    // return message.response.Unauthenticated({ error: "yolo" });
+    throw new Error("");
   },
   emit: {},
   outgoing: message => {
@@ -50,8 +51,13 @@ client.request.Ping({ ping: 42 }).then(({ response, is }) => {
   }
 });
 
-client.request.GetAll({}).then(({ is, response }) => {
-  if (is.Unauthenticated(response)) {
-    console.log("GetAll returned Unauthenticated", response.data);
-  }
-});
+client.request
+  .GetAll({})
+  .then(({ is, response }) => {
+    if (is.Unauthenticated(response)) {
+      console.log("GetAll returned Unauthenticated", response.data);
+    }
+  })
+  .catch(err => {
+    console.log(err);
+  });

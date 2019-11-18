@@ -2,7 +2,6 @@ import cuid from "cuid";
 import {
   Hander,
   MessageInternal,
-  PromiseActions,
   RemoteTopology,
   Server,
   Topology,
@@ -10,9 +9,11 @@ import {
   SendRequest,
   RequestIs,
   SendEmit,
-  ResponseObject
+  ResponseObject,
+  SendRequestOptions
 } from "./types";
 import { isMessage } from "./utils";
+import { RequestController } from "./RequestController";
 
 export const ZenSocket = {
   createLocal,
@@ -32,7 +33,7 @@ function createRemote<T extends Topology>(
 function create<T extends Topology>(handler: Hander<T>): Server<T> {
   const requests: Map<
     string,
-    PromiseActions<ResponseObject<T["localRequests"]>>
+    RequestController<ResponseObject<T["localRequests"]>>
   > = new Map();
   let idleQueue: Array<IdleQueueItem> = [];
 
@@ -101,7 +102,11 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
     return new Proxy(
       {},
       {
-        get: (_target, type) => (data: any) => {
+        get: (_target, type) => (
+          data: any,
+          options: SendRequestOptions = {}
+        ) => {
+          const { timeout = 5000 } = options;
           if (typeof type !== "string") {
             return undefined;
           }
@@ -112,7 +117,10 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
               type,
               data
             };
-            requests.set(request.id, { resolve, reject });
+            requests.set(
+              request.id,
+              RequestController.create(resolve, reject, timeout)
+            );
             handler.outgoing(request);
           });
         }
