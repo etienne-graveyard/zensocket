@@ -1,37 +1,21 @@
-import {
-  CreateTopology,
-  ZenSocket,
-  MessageBuilder,
-  CreateMessages
-} from "../src";
+import { CreateTopology, ZenSocket, MessageDef } from "../src";
 
-type AuthenticatedMessageBuilder<
+type UnauthenticatedResponse = { Unauthenticated: { error: string } };
+type PongResponse = { Pong: { pong: number } };
+type OopsResponse = { Oops: { error: string } };
+type BarResponse = { Bar: { bar: string } };
+
+type AuthenticatedMessageDef<Req, Res> = MessageDef<
   Req,
-  Res extends { [key: string]: any }
-> = MessageBuilder<
-  Req,
-  Res & {
-    Unauthenticated: { error: string };
-  }
+  Res & UnauthenticatedResponse
 >;
 
 type Topo = CreateTopology<{
-  localRequests: CreateMessages<{
-    Ping: MessageBuilder<
-      { ping: number },
-      {
-        Pong: { pong: number };
-        Oops: { error: string };
-      }
-    >;
-    GetAll: AuthenticatedMessageBuilder<{}, {}>;
-    Foo: AuthenticatedMessageBuilder<
-      {},
-      {
-        Bar: { bar: string };
-      }
-    >;
-  }>;
+  localRequests: {
+    Ping: MessageDef<{ ping: number }, PongResponse & OopsResponse>;
+    GetAll: AuthenticatedMessageDef<{}, PongResponse & OopsResponse>;
+    Foo: AuthenticatedMessageDef<{}, BarResponse>;
+  };
   remoteRequests: {};
   localEmits: {};
   remoteEmits: {};
@@ -60,6 +44,14 @@ const server = ZenSocket.createRemote<Topo>({
   }
 });
 
-client.request.Ping({ ping: 42 }).then(res => {
-  console.log(res.type);
+client.request.Ping({ ping: 42 }).then(({ response, is }) => {
+  if (is.Pong(response)) {
+    console.log("Ping returned Pong", response.data);
+  }
+});
+
+client.request.GetAll({}).then(({ is, response }) => {
+  if (is.Unauthenticated(response)) {
+    console.log("GetAll returned Unauthenticated", response.data);
+  }
 });

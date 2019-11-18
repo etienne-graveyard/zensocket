@@ -1,52 +1,33 @@
+// Definition
+
 const OPAQUE = Symbol("OPAQUE");
-
-type MessagesDefAny = { [key: string]: MessageBuilder<any, any> };
-
-export type CreateMessages<T extends MessagesDefAny> = {
-  [K in keyof T]: T[K] & { type: K };
-};
-
-export type MessagesAny = CreateMessages<MessagesDefAny>;
 
 interface MessageResponse {
   [OPAQUE]: true;
 }
 
-export type MessageBuilder<Data, Res extends { [key: string]: any }> = {
+type ResponseGroupDef = { [key: string]: object };
+
+type GroupDef = { [key: string]: MessageDef<any, any> };
+
+export type MessageDef<Data, Res extends ResponseGroupDef> = {
   [OPAQUE]: true;
   data: Data;
   res: Res;
 };
 
-type MessagesObject<Messages extends MessagesAny> = {
-  [K in keyof Messages]: {
-    type: K;
-    data: Messages[K]["data"];
-    response: {
-      [L in keyof Messages[K]["res"]]: (
-        data: Messages[K]["res"][L]
-      ) => MessageResponse;
-    };
-  };
-};
-
-type MessageObject<Messages extends MessagesAny> = MessagesObject<
-  Messages
->[keyof Messages];
-
-export type MessageAny<Messages extends MessagesAny> = Messages[keyof Messages];
-
-export interface Emits {
+export interface EmitsDef {
   [name: string]: object | null;
 }
 
 export interface Topology {
-  localRequests: MessagesAny;
-  remoteRequests: MessagesAny;
-  localEmits: Emits;
-  remoteEmits: Emits;
+  localRequests: GroupDef;
+  remoteRequests: GroupDef;
+  localEmits: EmitsDef;
+  remoteEmits: EmitsDef;
 }
 
+// Used to validated the created type
 export type CreateTopology<T extends Topology> = T;
 
 export type RemoteTopology<T extends Topology> = CreateTopology<{
@@ -56,40 +37,29 @@ export type RemoteTopology<T extends Topology> = CreateTopology<{
   remoteEmits: T["localEmits"];
 }>;
 
-type ResponseAny<M extends MessageBuilder<any, any>> = {
-  [K in keyof M]: M[K] & { type: K };
-}[keyof M];
+// Handler
 
-export type SendRequest<Messages extends MessagesAny> = {
-  [K in keyof Messages]: (
-    data: Messages[K]["data"]
-  ) => Promise<ResponseAny<Messages[K]["res"]>>;
+type RequestResolved<M extends GroupDef> = {
+  [K in keyof M]: {
+    type: K;
+    data: M[K]["data"];
+    response: {
+      [L in keyof M[K]["res"]]: (data: M[K]["res"][L]) => MessageResponse;
+    };
+  };
 };
 
-export interface Server<T extends Topology> {
-  request: SendRequest<T["localRequests"]>;
-  emit: <K extends keyof T["localEmits"]>(
-    type: K,
-    data: T["localEmits"][K]
-  ) => void;
-  incoming: (message: object) => void;
-  close: () => void;
-  idle: () => Promise<void>;
-}
-
-export type MessageIs<Messages extends MessagesAny> = {
-  [K in keyof Messages]: (
-    message: MessageObject<Messages>
-  ) => message is MessagesObject<Messages>[K];
+export type RequestIs<M extends GroupDef> = {
+  [K in keyof M]: (
+    message: AnyKey<RequestResolved<M>>
+  ) => message is RequestResolved<M>[K];
 };
 
-type RequestHandler<Messages extends MessagesAny> = MessageAny<
-  Messages
-> extends never
+type RequestHandler<M extends GroupDef> = AnyKey<M> extends never
   ? null
   : (
-      message: MessageObject<Messages>,
-      is: MessageIs<Messages>
+      message: AnyKey<RequestResolved<M>>,
+      is: RequestIs<M>
     ) => Promise<MessageResponse>;
 
 export interface Hander<T extends Topology> {
@@ -100,16 +70,58 @@ export interface Hander<T extends Topology> {
   outgoing: (message: object) => void;
 }
 
-export interface PromiseActions {
-  resolve(data: unknown): void;
-  reject(error: unknown): void;
+// Send
+
+type ResponseResolved<M extends ResponseGroupDef> = {
+  [K in keyof M]: {
+    type: K;
+    data: M[K];
+  };
+};
+
+export type ResponseIs<M extends ResponseGroupDef> = {
+  [K in keyof M]: (
+    message: AnyKey<ResponseResolved<M>>
+  ) => message is ResponseResolved<M>[K];
+};
+
+export type ResponseObject<Res extends GroupDef> = {
+  response: AnyKey<ResponseResolved<Res>>;
+  is: ResponseIs<Res>;
+};
+
+export type SendRequest<M extends GroupDef> = {
+  [K in keyof M]: (data: M[K]["data"]) => Promise<ResponseObject<M[K]["res"]>>;
+};
+
+export type SendEmit<M extends EmitsDef> = {
+  [K in keyof M]: (data: M[K]) => void;
+};
+
+// Server
+
+export interface Server<T extends Topology> {
+  request: SendRequest<T["localRequests"]>;
+  emit: SendEmit<T["localEmits"]>;
+  incoming: (message: object) => void;
+  close: () => void;
+  idle: () => Promise<void>;
+}
+
+// Internal
+
+export type AnyKey<T extends { [key: string]: any }> = T[keyof T];
+
+export interface PromiseActions<T> {
+  resolve(data: T): void;
+  reject(error: any): void;
 }
 
 export interface MessageInternal {
   type: string;
   kind: "EMIT" | "REQUEST" | "RESPONSE";
   id: string;
-  data: object | null;
+  data: any;
 }
 
 export interface IdleQueueItem {

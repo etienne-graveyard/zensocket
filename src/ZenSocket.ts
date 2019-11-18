@@ -8,7 +8,9 @@ import {
   Topology,
   IdleQueueItem,
   SendRequest,
-  MessageIs
+  RequestIs,
+  SendEmit,
+  ResponseObject
 } from "./types";
 import { isMessage } from "./utils";
 
@@ -27,8 +29,11 @@ function createRemote<T extends Topology>(
   return create(handler);
 }
 
-function create(handler: Hander<any>): Server<any> {
-  const requests: Map<string, PromiseActions> = new Map();
+function create<T extends Topology>(handler: Hander<T>): Server<T> {
+  const requests: Map<
+    string,
+    PromiseActions<ResponseObject<T["localRequests"]>>
+  > = new Map();
   let idleQueue: Array<IdleQueueItem> = [];
 
   const response = createResponse();
@@ -37,7 +42,7 @@ function create(handler: Hander<any>): Server<any> {
   return {
     incoming,
     request: createRequest(),
-    emit,
+    emit: createEmit(),
     idle,
     close
   };
@@ -69,6 +74,27 @@ function create(handler: Hander<any>): Server<any> {
       idleQueue.push({ resolve, reject: () => reject("Connection Error") });
     });
     return prom;
+  }
+
+  function createEmit(): SendEmit<Topology["localEmits"]> {
+    return new Proxy(
+      {},
+      {
+        get: (_target, type) => (data: any) => {
+          if (typeof type !== "string") {
+            return undefined;
+          }
+          const request: MessageInternal = {
+            kind: "EMIT",
+            id: cuid(),
+            type,
+            data
+          };
+          handler.outgoing(request);
+          return;
+        }
+      }
+    ) as any;
   }
 
   function createRequest(): SendRequest<Topology["localRequests"]> {
@@ -108,29 +134,13 @@ function create(handler: Hander<any>): Server<any> {
     ) as any;
   }
 
-  function createIs(): MessageIs<any> {
+  function createIs(): RequestIs<any> {
     return new Proxy(
       {},
       {
         get: (_target, type) => (message: any) => message.type === type
       }
     ) as any;
-  }
-
-  async function emit(
-    type: string | number | symbol,
-    data: object
-  ): Promise<void> {
-    if (typeof type !== "string") {
-      throw new Error("type should be a string");
-    }
-    const message: MessageInternal = {
-      id: cuid(),
-      data,
-      kind: "EMIT",
-      type
-    };
-    handler.outgoing(message);
   }
 
   function incoming(message: object) {
@@ -141,7 +151,10 @@ function create(handler: Hander<any>): Server<any> {
           throw new Error(`Invalid response`);
         }
         requests.delete(message.id);
-        actions.resolve({ type: message.type, data: message.data });
+        actions.resolve({
+          is: is as any,
+          response: { type: message.type, data: message.data }
+        });
         resolveIdle();
         return;
       }

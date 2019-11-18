@@ -5,7 +5,6 @@ export {
   RemoteTopology,
   Hander,
   Server,
-  MessageAny,
-  MessageBuilder,
-  CreateMessages
+  AnyKey,
+  MessageDef
 } from "./types";
