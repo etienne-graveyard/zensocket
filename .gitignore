@@ -131,6 +131,4 @@ Temporary Items
 
 # End of https://www.gitignore.io/api/macos
 
-.rts2_cache_cjs
-.rts2_cache_esm
 dist
