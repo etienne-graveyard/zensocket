@@ -14,7 +14,7 @@
     "start": "tsdx watch --target web",
     "test": "tsdx test",
     "typecheck": "tsc --noEmit",
-    "pub": "yarn build && np"
+    "pub": "yarn build && CI=false tsdx test && np --no-tests"
   },
   "dependencies": {
     "cuid": "^2.1.8",
