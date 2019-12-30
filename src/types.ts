@@ -6,7 +6,7 @@ interface MessageResponse {
   [OPAQUE]: true;
 }
 
-type ResponseGroup = { [key: string]: object };
+export type ResponseGroup = { [key: string]: object };
 
 type RequestGroup = { [key: string]: Request<any, any> };
 

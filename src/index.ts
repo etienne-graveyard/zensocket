@@ -6,5 +6,6 @@ export {
   Topology,
   Hander,
   Server,
-  Request
+  Request,
+  ResponseGroup
 } from "./types";
