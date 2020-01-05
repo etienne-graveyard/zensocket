@@ -108,6 +108,7 @@ export type SendEmit<M extends EmitsDef> = {
 // Server
 
 export interface Server<T extends Topology> {
+  update: (handler: Hander<T>) => void;
   request: SendRequest<T["localRequests"]>;
   emit: SendEmit<T["localEmits"]>;
   incoming: (message: object) => void;

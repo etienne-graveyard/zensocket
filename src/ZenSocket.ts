@@ -31,6 +31,7 @@ function createRemote<T extends Topology>(
 }
 
 function create<T extends Topology>(handler: Hander<T>): Server<T> {
+  let currentHandler: Hander<T> = handler;
   const requests: Map<
     string,
     RequestController<ResponseObject<T["localRequests"]>>
@@ -41,12 +42,17 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
   const is = createIs();
 
   return {
+    update: replaceHandler,
     incoming,
     request: createRequest(),
     emit: createEmit(),
     idle,
     close
   };
+
+  function replaceHandler(handler: Hander<T>) {
+    currentHandler = handler;
+  }
 
   function close() {
     // reject all item in the queue
@@ -91,7 +97,7 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
             type,
             data
           };
-          handler.outgoing(request);
+          currentHandler.outgoing(request);
           return;
         }
       }
@@ -121,7 +127,7 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
               request.id,
               RequestController.create(resolve, reject, timeout)
             );
-            handler.outgoing(request);
+            currentHandler.outgoing(request);
           });
         }
       }
@@ -167,10 +173,10 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
         return;
       }
       if (message.kind === "REQUEST") {
-        if (!handler.request) {
+        if (!currentHandler.request) {
           throw new Error("Missing request handler ?");
         }
-        return handler
+        return currentHandler
           .request(
             {
               type: message.type,
@@ -186,11 +192,11 @@ function create<T extends Topology>(handler: Hander<T>): Server<T> {
               data: res.data,
               type: res.type
             };
-            handler.outgoing(response);
+            currentHandler.outgoing(response);
           });
       }
       if (message.kind === "EMIT") {
-        const emitHandler = handler.emit[message.type];
+        const emitHandler = currentHandler.emit[message.type];
         if (!emitHandler) {
           throw new Error("Invalid message");
         }
