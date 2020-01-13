@@ -1,11 +1,36 @@
 import cuid from "cuid";
-import { Messages, ExecRunner } from "./types";
+import {
+  Hander,
+  MessageInternal,
+  RemoteTopology,
+  Server,
+  Messages,
+  IdleQueueItem,
+  SendRequest,
+  RequestIs,
+  SendEmit,
+  ResponseObject,
+  SendRequestOptions
+} from "./types";
+import { isMessageInternal } from "./utils";
+import { RequestController } from "./RequestController";
 
 export const ZenSocket = {
-  create
+  createLocal,
+  createRemote
 };
 
-function create<T extends Messages>(runner: ExecRunner<T>): Server<T> {
+function createLocal<T extends Messages>(handler: Hander<T>): Server<T> {
+  return create(handler);
+}
+
+function createRemote<T extends Messages>(
+  handler: Hander<RemoteTopology<T>>
+): Server<RemoteTopology<T>> {
+  return create(handler);
+}
+
+function create<T extends Messages>(handler: Hander<T>): Server<T> {
   let currentHandler: Hander<T> = handler;
   const requests: Map<
     string,
