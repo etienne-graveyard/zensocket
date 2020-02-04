@@ -12,7 +12,8 @@ import {
   InternalMessageDown,
   InternalMessageUpType,
   FlowEventInitial,
-  FlowEventFragment
+  FlowEventFragment,
+  ALL_MESSAGE_DOWN_TYPES
 } from './types';
 import cuid from 'cuid';
 import { Mappemonde } from 'mappemonde';
@@ -235,14 +236,11 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
         if (message.zenid !== zenid) {
           return false;
         }
-        if (
-          ['Subscribed', 'Unsubscribed', 'UnsubscribedByServer', 'Event', 'Unsubscribed'].includes(
-            message.type
-          )
-        ) {
+        if (Object.keys(ALL_MESSAGE_DOWN_TYPES).includes(message.type)) {
           return true;
         } else {
-          console.warn(`Invalid type`);
+          console.log(message);
+          console.warn(`Invalid message.type`);
         }
       }
     }

@@ -131,6 +131,14 @@ type InternalMessageDownData = {
   };
 };
 
+export const ALL_MESSAGE_DOWN_TYPES: { [K in keyof InternalMessageDownData]: null } = {
+  Error: null,
+  Event: null,
+  Subscribed: null,
+  Unsubscribed: null,
+  UnsubscribedByServer: null
+};
+
 type InternalMessageDownObj = {
   [K in keyof InternalMessageDownData]: {
     type: K;
@@ -153,6 +161,11 @@ type InternalMessageUpData = {
     event: string;
     query: QueryObj | null;
   };
+};
+
+export const ALL_MESSAGE_UP_TYPES: { [K in keyof InternalMessageUpData]: null } = {
+  Subscribe: null,
+  Unsubscribe: null
 };
 
 export type InternalMessageUpType = keyof InternalMessageUpData;

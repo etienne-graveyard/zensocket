@@ -4,7 +4,8 @@ import {
   InternalMessageUp,
   InternalMessageDown,
   HandleSubscribe,
-  Unsubscribe
+  Unsubscribe,
+  ALL_MESSAGE_UP_TYPES
 } from './types';
 import { Mappemonde } from 'mappemonde';
 import { queryToSlug, expectNever } from './utils';
@@ -76,10 +77,11 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         if (message.zenid !== zenid) {
           return false;
         }
-        if (['Subscribe', 'Unsubscribe', 'Request'].includes(message.type)) {
+        if (Object.keys(ALL_MESSAGE_UP_TYPES).includes(message.type)) {
           return true;
         } else {
-          console.warn(`Invalid type`);
+          console.log(message);
+          console.warn(`Invalid message.type`);
         }
       }
     }
