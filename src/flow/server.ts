@@ -79,7 +79,7 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         if (['Subscribe', 'Unsubscribe', 'Request'].includes(message.type)) {
           return true;
         } else {
-          console.log(`Invalid type`);
+          console.warn(`Invalid type`);
         }
       }
     }
@@ -103,8 +103,6 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         const { state, unsubscribe } = await onSub(message.query, fragment =>
           dispatch(message.event, message.query, fragment)
         );
-        console.log({ state });
-
         internal.set([message.event, slug], unsubscribe);
         const mes: InternalMessageDown = {
           zenid,

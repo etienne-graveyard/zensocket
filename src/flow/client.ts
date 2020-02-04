@@ -242,7 +242,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
         ) {
           return true;
         } else {
-          console.log(`Invalid type`);
+          console.warn(`Invalid type`);
         }
       }
     }
