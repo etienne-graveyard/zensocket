@@ -3,8 +3,8 @@ import {
   Flows,
   InternalMessageUp,
   InternalMessageDown,
-  InitialData,
-  GetInitial
+  HandleSubscribe,
+  Unsubscribe
 } from './types';
 import { Mappemonde } from 'mappemonde';
 import { queryToSlug, expectNever } from './utils';
@@ -12,17 +12,17 @@ import { queryToSlug, expectNever } from './utils';
 export interface FlowServerOptions<T extends Flows> {
   outgoing(message: any): void;
   zenid: string;
-  getInitial: GetInitial<T>;
+  handleSubscribe: HandleSubscribe<T>;
 }
 
 export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>): FlowServer<T> {
-  const { outgoing, zenid, getInitial } = options;
+  const { outgoing, zenid, handleSubscribe } = options;
 
-  const internal = Mappemonde.create<[keyof T, string], true>();
+  const internal = Mappemonde.create<[keyof T, string], Unsubscribe>();
 
   return {
     incoming,
-    dispatch,
+    // dispatch,
     unsubscribe
   };
 
@@ -54,10 +54,11 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
 
   function unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void {
     const slug = queryToSlug(query);
-    const isSubscribed = internal.has([event, slug]);
-    if (!isSubscribed) {
+    const unsubscribe = internal.get([event, slug]);
+    if (!unsubscribe) {
       return;
     }
+    unsubscribe();
     internal.delete([event, query]);
     const mes: InternalMessageDown = {
       zenid,
@@ -93,23 +94,28 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         return;
       }
       try {
-        let initialData: InitialData = null;
-        const onSub: GetInitial<T>[keyof GetInitial<T>] | undefined = (getInitial as any)[
-          message.event
-        ];
-        if (onSub) {
-          initialData = { data: await onSub(message.query) };
+        const onSub:
+          | HandleSubscribe<T>[keyof HandleSubscribe<T>]
+          | undefined = (handleSubscribe as any)[message.event];
+        if (!onSub) {
+          throw new Error('Missing on sub');
         }
-        internal.set([message.event, slug], true);
+        const { state, unsubscribe } = await onSub(message.query, fragment =>
+          dispatch(message.event, message.query, fragment)
+        );
+        console.log({ state });
+
+        internal.set([message.event, slug], unsubscribe);
         const mes: InternalMessageDown = {
           zenid,
           type: 'Subscribed',
-          initialData,
+          initialData: state,
           responseTo: message.id
         };
         outgoing(mes);
         return;
       } catch (error) {
+        internal.delete([message.event, slug]);
         const mes: InternalMessageDown = {
           zenid,
           type: 'Error',
@@ -122,10 +128,11 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
     }
     if (message.type === 'Unsubscribe') {
       const slug = queryToSlug(message.query);
-      const isSubscribed = internal.has([message.event, slug]);
-      if (isSubscribed === false) {
+      const unsubscribe = internal.get([message.event, slug]);
+      if (!unsubscribe) {
         return;
       }
+      unsubscribe();
       internal.delete([message.event, slug]);
       const rep: InternalMessageDown = {
         zenid,

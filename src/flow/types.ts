@@ -89,7 +89,7 @@ export type FlowClient<T extends Flows> = {
 
 export type FlowServer<T extends Flows> = {
   incoming(message: any): void;
-  dispatch<K extends keyof T>(event: K, query: T[K]['query'], fragment: T[K]['fragment']): void;
+  // dispatch<K extends keyof T>(event: K, query: T[K]['query'], fragment: T[K]['fragment']): void;
   unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
 };
 
@@ -97,20 +97,21 @@ export type WithInitial<T extends Flows> = {
   [K in keyof T]: T[K]['initial'] extends null ? never : K;
 }[keyof T];
 
-export type GetInitial<T extends Flows> = {
-  [K in WithInitial<T>]: (query: T[K]['query']) => Promise<T[K]['initial']>;
+export type HandleSubscribe<T extends Flows> = {
+  [K in WithInitial<T>]: (
+    query: T[K]['query'],
+    dispatch: (fragment: T[K]['fragment']) => void
+  ) => Promise<{ state: T[K]['initial']; unsubscribe: () => void }>;
 };
 
 /**
  * Internal
  */
 
-export type InitialData = null | { data: any };
-
 type InternalMessageDownData = {
   Subscribed: {
     responseTo: string;
-    initialData: InitialData;
+    initialData: any;
   };
   Unsubscribed: {
     responseTo: string;

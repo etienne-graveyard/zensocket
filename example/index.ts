@@ -33,19 +33,36 @@ const server = createFlowServer<Flows>({
     console.log('DOWN', message);
     client.incoming(message);
   },
-  getInitial: {
+  handleSubscribe: {
     Me: async () => {
-      console.log('init Me');
-      return { id: '', email: '' };
+      return {
+        state: { id: '', email: '' },
+        unsubscribe: () => null
+      };
     },
-    Atom: async ({ atomId }) => {
-      return { type: '', content: '', id: atomId };
+    Atom: async ({ atomId }, dispatch) => {
+      setTimeout(() => {
+        dispatch({ type: 'SetContent', content: 'yolo' });
+      }, 1000);
+      setTimeout(() => {
+        dispatch({ type: 'SetContent', content: 'yoooo' });
+      }, 3000);
+      return {
+        state: { type: '', content: '', id: atomId },
+        unsubscribe: () => null
+      };
     },
     Course: async () => {
-      return { id: '', name: '', content: '' };
+      return {
+        state: { id: '', name: '', content: '' },
+        unsubscribe: () => null
+      };
     },
     Courses: async () => {
-      return [];
+      return {
+        state: [],
+        unsubscribe: () => null
+      };
     }
   }
 });
@@ -77,6 +94,7 @@ client.on(e => {
         throw new Error('What ?');
       }
       if (e.data.type === 'SetContent') {
+        console.log(e.data);
         atom.content = e.data.content;
       }
     }
@@ -85,13 +103,5 @@ client.on(e => {
 });
 
 setTimeout(() => {
-  server.dispatch('Atom', { atomId: '1' }, { type: 'SetContent', content: 'yolo' });
-}, 1000);
-
-setTimeout(() => {
   server.unsubscribe('Atom', { atomId: '1' });
 }, 2000);
-
-setTimeout(() => {
-  server.dispatch('Atom', { atomId: '1' }, { type: 'SetContent', content: 'yoooo' });
-}, 3000);

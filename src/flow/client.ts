@@ -125,17 +125,15 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
         return;
       }
       setInternalState(out.event, out.query, { status: FlowStatus.Subscribed });
-      if (message.initialData !== null) {
-        const event: FlowEventInitial<T, keyof T> = {
-          event: out.event,
-          query: out.query,
-          type: 'Initial',
-          data: message.initialData.data,
-          is: t => t === out.event,
-          isOneOf: (...t) => t.includes(out.event as any)
-        };
-        eventSub.call(event);
-      }
+      const event: FlowEventInitial<T, keyof T> = {
+        event: out.event,
+        query: out.query,
+        type: 'Initial',
+        data: message.initialData,
+        is: t => t === out.event,
+        isOneOf: (...t) => t.includes(out.event as any)
+      };
+      eventSub.call(event);
       return;
     }
     if (message.type === 'Unsubscribed') {
