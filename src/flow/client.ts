@@ -32,6 +32,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
   const eventSub = Subscription.create<FlowEvent<T, keyof T>>();
 
   const internal = Mappemonde.create<[keyof T, string], FlowState>();
+  const subRequests = Mappemonde.create<[keyof T, string], Set<Unsubscribe>>();
 
   const emptyState: FlowState = {
     status: FlowStatus.Void
@@ -42,13 +43,51 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
   return {
     state,
     subscribe,
-    unsubscribe,
     incoming,
     on,
     onStateChange: stateChangedSub.subscribe
   };
 
-  function subscribe<K extends keyof T>(event: K, query: QueryObj | null = null): void {
+  function subscribe<K extends keyof T>(event: K, query: QueryObj | null = null): Unsubscribe {
+    const sub = ensureSubRequest(event, query);
+    const unsub = () => {
+      const sub = subRequests.get([event, queryToSlug(query)]);
+      if (sub) {
+        sub.delete(unsub);
+        update(event, query);
+      }
+    };
+    sub.add(unsub);
+    update(event, query);
+    return unsub;
+  }
+
+  function ensureSubRequest<K extends keyof T>(
+    event: K,
+    query: QueryObj | null = null
+  ): Set<Unsubscribe> {
+    const sub = subRequests.get([event, queryToSlug(query)]);
+    if (sub) {
+      return sub;
+    }
+    const created = new Set<Unsubscribe>();
+    subRequests.set([event, queryToSlug(query)], created);
+    return created;
+  }
+
+  function update<K extends keyof T>(event: K, query: QueryObj | null = null): void {
+    const sub = subRequests.get([event, queryToSlug(query)]);
+    if (!sub || sub.size === 0) {
+      if (sub && sub.size === 0) {
+        subRequests.delete([event, queryToSlug(query)]);
+      }
+      unsubscribeInternal(event, query);
+      return;
+    }
+    subscribeInternal(event, query);
+  }
+
+  function subscribeInternal<K extends keyof T>(event: K, query: QueryObj | null = null): void {
     const intern = ensureInternalState(event, query);
     if (intern.status === FlowStatus.Subscribing) {
       return;
@@ -78,7 +117,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
     }
   }
 
-  function unsubscribe<K extends keyof T>(event: K, query: QueryObj | null = null): void {
+  function unsubscribeInternal<K extends keyof T>(event: K, query: QueryObj | null = null): void {
     const intern = getInternalState(event, query);
     if (intern === null) {
       return;
