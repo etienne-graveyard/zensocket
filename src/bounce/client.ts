@@ -48,7 +48,7 @@ export function createBounceClient<T extends Bounces>(
           pendingRequests.delete(requestId);
           prom.reject(new BounceError.Timeout());
         }
-      }, timeout * 1000);
+      }, timeout);
     }
 
     const mes: InternalMessageUp = {
