@@ -8,7 +8,8 @@ import {
   ALL_MESSAGE_UP_TYPES
 } from './types';
 import { Mappemonde } from 'mappemonde';
-import { queryToSlug, expectNever } from './utils';
+import { queryToSlug } from './utils';
+import { expectNever } from '../utils';
 
 export interface FlowServerOptions<T extends Flows> {
   outgoing(message: any): void;

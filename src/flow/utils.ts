@@ -15,5 +15,3 @@ export function queryToSlug(query: QueryObj | null): string {
           }, [])
   );
 }
-
-export function expectNever<T extends never>(_val: T): void {}

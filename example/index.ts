@@ -17,6 +17,8 @@ type Flows = {
   Atom: Flow<{ atomId: string }, Atom, AtomFragment>;
   Courses: Flow<null, Array<{ id: string; name: string }>>;
   Course: Flow<{ courseId: string }, { id: string; name: string; content: string }>;
+  //
+  NoDataEvent: Flow<{ chanel: string }, null, { event: string }>;
 };
 
 const client = createFlowClient<Flows>({
@@ -61,6 +63,12 @@ const server = createFlowServer<Flows>({
     Courses: async () => {
       return {
         state: [],
+        unsubscribe: () => null
+      };
+    },
+    NoDataEvent: async () => {
+      return {
+        state: null,
         unsubscribe: () => null
       };
     }

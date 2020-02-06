@@ -1,20 +1,20 @@
 import { SubscriptionCallback } from 'suub';
 
-const EVENT = Symbol('EVENT');
-
-export type FlowAny = Flow<any, any, any>;
-export type Flows = { [key: string]: FlowAny };
+const FLOW = Symbol.for('ZENSOCKET_FLOW');
 
 export type QueryObj = { [key: string]: string | number | null | boolean };
 
 export interface Flow<Query extends QueryObj | null, Initial = null, Fragment = null> {
-  [EVENT]: true;
+  [FLOW]: true;
   query: Query;
   initial: Initial;
   fragment: Fragment;
 }
 
-export interface FlowEventBase<T extends Flows, K extends keyof T> {
+export type FlowAny = Flow<any, any, any>;
+export type Flows = { [key: string]: FlowAny };
+
+interface FlowEventBase<T extends Flows, K extends keyof T> {
   event: K;
   query: T[K]['query'];
 }
@@ -37,11 +37,9 @@ export type FlowEvent<T extends Flows, K extends keyof T> =
   | FlowEventInitial<T, K>
   | FlowEventFragment<T, K>;
 
-export interface UnsubscribedEvent {}
-
 export type FlowListener<T extends Flows> = (event: FlowEvent<T, keyof T>) => void;
 
-export type QueryParam<E extends FlowAny> = E['query'] extends null ? [] : [E['query']];
+type QueryParam<E extends FlowAny> = E['query'] extends null ? [] : [E['query']];
 
 export enum FlowStatus {
   Void = 'Void',
@@ -93,16 +91,19 @@ export type FlowServer<T extends Flows> = {
   unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
 };
 
-export type WithInitial<T extends Flows> = {
-  [K in keyof T]: T[K]['initial'] extends null ? never : K;
-}[keyof T];
-
 export type HandleSubscribe<T extends Flows> = {
-  [K in WithInitial<T>]: (
+  [K in keyof T]: (
     query: T[K]['query'],
     dispatch: (fragment: T[K]['fragment']) => void
   ) => Promise<{ state: T[K]['initial']; unsubscribe: () => void }>;
 };
+
+export type FlowResoure<T extends Flows, K extends keyof T = keyof T> = {
+  [K in keyof T]: {
+    event: K;
+    query: T[K]['query'];
+  };
+}[K];
 
 /**
  * Internal

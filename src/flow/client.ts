@@ -17,7 +17,8 @@ import {
 } from './types';
 import cuid from 'cuid';
 import { Mappemonde } from 'mappemonde';
-import { queryToSlug, expectNever } from './utils';
+import { queryToSlug } from './utils';
+import { expectNever } from '../utils';
 
 export interface FlowClientOptions {
   outgoing(message: any): void;

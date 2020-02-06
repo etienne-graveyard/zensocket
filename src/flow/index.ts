@@ -9,5 +9,6 @@ export {
   FlowState,
   FlowServer,
   FlowStatus,
-  QueryObj
+  QueryObj,
+  FlowResoure
 } from './types';

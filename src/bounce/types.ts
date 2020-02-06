@@ -1,0 +1,106 @@
+const BOUNCE = Symbol.for('ZENSOCKET_BOUNCE');
+
+export interface Bounce<Request, Response> {
+  [BOUNCE]: true;
+  request: Request;
+  response: Response;
+}
+
+export type BounceAny = Bounce<any, any>;
+export type Bounces = { [key: string]: BounceAny };
+
+export type HandleRequest<T extends Bounces> = {
+  [K in keyof T]: (data: T[K]['request'], canceled: () => Boolean) => Promise<T[K]['response']>;
+};
+
+export type BounceServer = {
+  incoming(message: any): void;
+};
+
+export interface BounceRequestOptions {
+  timeout?: number | null;
+}
+
+export type CancellableBounce<T extends BounceAny> = {
+  cancel: () => void;
+  response: Promise<T['response']>;
+};
+
+export type BounceClient<T extends Bounces> = {
+  incoming(message: any): void;
+  cancellable<K extends keyof T>(
+    event: K,
+    data: T[K]['request'],
+    options?: BounceRequestOptions
+  ): CancellableBounce<T[K]>;
+  request<K extends keyof T>(
+    event: K,
+    data: T[K]['request'],
+    options?: BounceRequestOptions
+  ): Promise<T[K]['response']>;
+};
+
+/**
+ * Internal
+ */
+
+export enum BounceErrorType {
+  MissingServerHandler = 'MissingServerHandler',
+  ServerHandlerError = 'ServerHandlerError'
+}
+
+type InternalMessageDownData = {
+  Success: {
+    responseTo: string;
+    data: any;
+  };
+  Error: {
+    responseTo: string;
+    errorType: BounceErrorType;
+  };
+};
+
+export const ALL_MESSAGE_DOWN_TYPES: { [K in keyof InternalMessageDownData]: null } = {
+  Success: null,
+  Error: null
+};
+
+type InternalMessageDownObj = {
+  [K in keyof InternalMessageDownData]: {
+    type: K;
+    zenid: string;
+  } & InternalMessageDownData[K];
+};
+
+export type InternalMessageDown<
+  K extends keyof InternalMessageDownObj = keyof InternalMessageDownObj
+> = InternalMessageDownObj[K];
+
+type InternalMessageUpData = {
+  Request: {
+    id: string;
+    bounce: string;
+    data: any;
+  };
+  Cancel: {
+    requestId: string;
+  };
+};
+
+export const ALL_MESSAGE_UP_TYPES: { [K in keyof InternalMessageUpData]: null } = {
+  Request: null,
+  Cancel: null
+};
+
+export type InternalMessageUpType = keyof InternalMessageUpData;
+
+type InternalMessageUpObj = {
+  [K in InternalMessageUpType]: {
+    type: K;
+    zenid: string;
+  } & InternalMessageUpData[K];
+};
+
+export type InternalMessageUp<
+  K extends InternalMessageUpType = InternalMessageUpType
+> = InternalMessageUpObj[K];
