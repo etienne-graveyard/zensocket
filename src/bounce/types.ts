@@ -92,7 +92,7 @@ export const ALL_MESSAGE_UP_TYPES: { [K in keyof InternalMessageUpData]: null } 
   Cancel: null
 };
 
-export type InternalMessageUpType = keyof InternalMessageUpData;
+type InternalMessageUpType = keyof InternalMessageUpData;
 
 type InternalMessageUpObj = {
   [K in InternalMessageUpType]: {
