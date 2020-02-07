@@ -1,4 +1,4 @@
-import { ZensocketClient, ZensocketServer } from 'src/types';
+import { ZensocketClient, ZensocketServer } from '../types';
 
 const BOUNCE = Symbol.for('ZENSOCKET_BOUNCE');
 
