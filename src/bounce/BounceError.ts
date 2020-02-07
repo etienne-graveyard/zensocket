@@ -10,6 +10,7 @@ export class BounceError extends Error {
   public static ServerHandlerError: typeof ServerHandlerError;
   public static MissingServerHandler: typeof MissingServerHandler;
   public static UnkwownError: typeof UnkwownError;
+  public static NotConnected: typeof NotConnected;
 }
 
 class Canceled extends BounceError {
@@ -42,8 +43,15 @@ class UnkwownError extends BounceError {
   }
 }
 
+class NotConnected extends BounceError {
+  constructor() {
+    super(`NotConnected`);
+  }
+}
+
 BounceError.Canceled = Canceled;
 BounceError.Timeout = Timeout;
 BounceError.ServerHandlerError = ServerHandlerError;
 BounceError.MissingServerHandler = MissingServerHandler;
 BounceError.UnkwownError = UnkwownError;
+BounceError.NotConnected = NotConnected;

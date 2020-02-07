@@ -77,6 +77,8 @@ export type FlowState =
 export type Unsubscribe = () => void;
 
 export type FlowClient<T extends Flows> = {
+  connected(outgoing: (msg: any) => void): void;
+  disconnected(): void;
   incoming(message: any): void;
   subscribe<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): Unsubscribe;
   state<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowState;

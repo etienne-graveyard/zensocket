@@ -22,11 +22,12 @@ type Flows = {
 };
 
 const client = createFlowClient<Flows>({
-  zenid: 'main',
-  outgoing: message => {
-    console.log('UP', message);
-    server.incoming(message);
-  }
+  zenid: 'main'
+});
+
+client.connected(message => {
+  console.log('UP', message);
+  server.incoming(message);
 });
 
 const server = createFlowServer<Flows>({

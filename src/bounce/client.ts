@@ -14,7 +14,6 @@ import cuid from 'cuid';
 import { ControllablePromise, createControllablePromise } from './utils';
 
 export interface BounceClientOptions {
-  outgoing(message: any): void;
   zenid: string;
   defaultTimeout?: number | null;
 }
@@ -22,15 +21,31 @@ export interface BounceClientOptions {
 export function createBounceClient<T extends Bounces>(
   options: BounceClientOptions
 ): BounceClient<T> {
-  const { outgoing, zenid, defaultTimeout = null } = options;
+  const { zenid, defaultTimeout = null } = options;
+
+  let outgoing: ((msg: any) => void) | null = null;
 
   const pendingRequests = new Map<string, ControllablePromise<any>>();
 
   return {
+    disconnected,
+    connected,
     incoming,
     cancellable,
     request
   };
+
+  function disconnected(): void {
+    outgoing = null;
+    Array.from(pendingRequests.entries()).forEach(([key, state]) => {
+      state.reject(new BounceError.NotConnected());
+      pendingRequests.delete(key);
+    });
+  }
+
+  function connected(out: (msg: any) => void): void {
+    outgoing = out;
+  }
 
   function cancellable<K extends keyof T>(
     bounce: K,
@@ -39,6 +54,14 @@ export function createBounceClient<T extends Bounces>(
   ): CancellableBounce<T[K]> {
     const { timeout = defaultTimeout } = options;
     const requestId = cuid.slug();
+
+    if (outgoing === null) {
+      return {
+        cancel: () => {},
+        response: Promise.reject(new BounceError.NotConnected())
+      };
+    }
+
     const prom = createControllablePromise<T[K]['response']>(() => {});
 
     let timer: null | NodeJS.Timeout = null;
@@ -72,7 +95,7 @@ export function createBounceClient<T extends Bounces>(
     });
 
     function cancel() {
-      if (pendingRequests.has(requestId)) {
+      if (outgoing && pendingRequests.has(requestId)) {
         const mes: InternalMessageUp = {
           zenid,
           type: 'Cancel',

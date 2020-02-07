@@ -27,6 +27,8 @@ export type CancellableBounce<T extends BounceAny> = {
 };
 
 export type BounceClient<T extends Bounces> = {
+  connected(outgoing: (msg: any) => void): void;
+  disconnected(): void;
   incoming(message: any): void;
   cancellable<K extends keyof T>(
     event: K,

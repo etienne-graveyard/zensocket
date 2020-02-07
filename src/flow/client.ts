@@ -21,18 +21,24 @@ import { queryToSlug } from './utils';
 import { expectNever } from '../utils';
 
 export interface FlowClientOptions {
-  outgoing(message: any): void;
   zenid: string;
 }
 
+interface SubRequestsState {
+  query: QueryObj | null;
+  subs: Set<Unsubscribe>;
+}
+
 export function createFlowClient<T extends Flows>(options: FlowClientOptions): FlowClient<T> {
-  const { outgoing, zenid } = options;
+  const { zenid } = options;
+
+  let outgoing: ((msg: any) => void) | null = null;
 
   const stateChangedSub = Subscription.create();
   const eventSub = Subscription.create<FlowEvent<T, keyof T>>();
 
-  const internal = Mappemonde.create<[keyof T, string], FlowState>();
-  const subRequests = Mappemonde.create<[keyof T, string], Set<Unsubscribe>>();
+  let internal = Mappemonde.create<[keyof T, string], FlowState>();
+  const subRequests = Mappemonde.create<[keyof T, string], SubRequestsState>();
 
   const emptyState: FlowState = {
     status: FlowStatus.Void
@@ -45,19 +51,39 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
     subscribe,
     incoming,
     on,
+    disconnected,
+    connected,
     onStateChange: stateChangedSub.subscribe
   };
+
+  function disconnected(): void {
+    outgoing = null;
+    // reset internal state
+    internal = Mappemonde.create<[keyof T, string], FlowState>();
+    stateChangedSub.call();
+  }
+
+  function connected(out: (msg: any) => void): void {
+    outgoing = out;
+    // sub what need to be
+    subRequests.entries().forEach(([keys, state]) => {
+      const event = keys[0];
+      if (state.subs.size > 0) {
+        update(event, state.query);
+      }
+    });
+  }
 
   function subscribe<K extends keyof T>(event: K, query: QueryObj | null = null): Unsubscribe {
     const sub = ensureSubRequest(event, query);
     const unsub = () => {
       const sub = subRequests.get([event, queryToSlug(query)]);
       if (sub) {
-        sub.delete(unsub);
+        sub.subs.delete(unsub);
         update(event, query);
       }
     };
-    sub.add(unsub);
+    sub.subs.add(unsub);
     update(event, query);
     return unsub;
   }
@@ -65,20 +91,23 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
   function ensureSubRequest<K extends keyof T>(
     event: K,
     query: QueryObj | null = null
-  ): Set<Unsubscribe> {
+  ): SubRequestsState {
     const sub = subRequests.get([event, queryToSlug(query)]);
     if (sub) {
       return sub;
     }
-    const created = new Set<Unsubscribe>();
+    const created: SubRequestsState = {
+      query,
+      subs: new Set<Unsubscribe>()
+    };
     subRequests.set([event, queryToSlug(query)], created);
     return created;
   }
 
   function update<K extends keyof T>(event: K, query: QueryObj | null = null): void {
     const sub = subRequests.get([event, queryToSlug(query)]);
-    if (!sub || sub.size === 0) {
-      if (sub && sub.size === 0) {
+    if (!sub || sub.subs.size === 0) {
+      if (sub && sub.subs.size === 0) {
         subRequests.delete([event, queryToSlug(query)]);
       }
       unsubscribeInternal(event, query);
@@ -88,6 +117,9 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
   }
 
   function subscribeInternal<K extends keyof T>(event: K, query: QueryObj | null = null): void {
+    if (outgoing === null) {
+      return;
+    }
     const intern = ensureInternalState(event, query);
     if (intern.status === FlowStatus.Subscribing) {
       return;
@@ -118,6 +150,9 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions): F
   }
 
   function unsubscribeInternal<K extends keyof T>(event: K, query: QueryObj | null = null): void {
+    if (outgoing === null) {
+      return;
+    }
     const intern = getInternalState(event, query);
     if (intern === null) {
       return;
