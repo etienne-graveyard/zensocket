@@ -1,4 +1,8 @@
+import { ZensocketClient, ZensocketServer } from 'src/types';
+
 const BOUNCE = Symbol.for('ZENSOCKET_BOUNCE');
+
+export const BOUNCE_PREFIX = 'BOUNCE__';
 
 export interface Bounce<Request, Response> {
   [BOUNCE]: true;
@@ -13,10 +17,6 @@ export type HandleRequest<T extends Bounces> = {
   [K in keyof T]: (data: T[K]['request'], canceled: () => Boolean) => Promise<T[K]['response']>;
 };
 
-export type BounceServer = {
-  incoming(message: any): void;
-};
-
 export interface BounceRequestOptions {
   timeout?: number | null;
 }
@@ -26,10 +26,9 @@ export type CancellableBounce<T extends BounceAny> = {
   response: Promise<T['response']>;
 };
 
-export type BounceClient<T extends Bounces> = {
-  connected(outgoing: (msg: any) => void): void;
-  disconnected(): void;
-  incoming(message: any): void;
+export interface BounceServer extends ZensocketServer {}
+
+export interface BounceClient<T extends Bounces> extends ZensocketClient {
   cancellable<K extends keyof T>(
     event: K,
     data: T[K]['request'],
@@ -40,7 +39,7 @@ export type BounceClient<T extends Bounces> = {
     data: T[K]['request'],
     options?: BounceRequestOptions
   ): Promise<T[K]['response']>;
-};
+}
 
 /**
  * Internal

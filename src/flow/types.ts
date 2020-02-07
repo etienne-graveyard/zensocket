@@ -1,6 +1,9 @@
 import { SubscriptionCallback } from 'suub';
+import { ZensocketClient, ZensocketServer } from '../types';
 
 const FLOW = Symbol.for('ZENSOCKET_FLOW');
+
+export const FLOW_PREFIX = 'FLOW__';
 
 export type QueryObj = { [key: string]: string | number | null | boolean };
 
@@ -76,21 +79,16 @@ export type FlowState =
 
 export type Unsubscribe = () => void;
 
-export type FlowClient<T extends Flows> = {
-  connected(outgoing: (msg: any) => void): void;
-  disconnected(): void;
-  incoming(message: any): void;
+export interface FlowClient<T extends Flows> extends ZensocketClient {
   subscribe<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): Unsubscribe;
   state<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowState;
   on(listener: FlowListener<T>): Unsubscribe;
   onStateChange(listener: SubscriptionCallback<void>): Unsubscribe;
-};
+}
 
-export type FlowServer<T extends Flows> = {
-  incoming(message: any): void;
-  // dispatch<K extends keyof T>(event: K, query: T[K]['query'], fragment: T[K]['fragment']): void;
+export interface FlowServer<T extends Flows> extends ZensocketServer {
   unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
-};
+}
 
 export type HandleSubscribe<T extends Flows> = {
   [K in keyof T]: (

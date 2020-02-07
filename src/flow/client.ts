@@ -13,12 +13,14 @@ import {
   InternalMessageUpType,
   FlowEventInitial,
   FlowEventFragment,
-  ALL_MESSAGE_DOWN_TYPES
+  ALL_MESSAGE_DOWN_TYPES,
+  FLOW_PREFIX
 } from './types';
 import cuid from 'cuid';
 import { Mappemonde } from 'mappemonde';
 import { queryToSlug } from './utils';
 import { expectNever } from '../utils';
+import { Outgoing } from '../types';
 
 export interface FlowClientOptions {
   zenid: string;
@@ -30,9 +32,9 @@ interface SubRequestsState {
 }
 
 export function createFlowClient<T extends Flows>(options: FlowClientOptions): FlowClient<T> {
-  const { zenid } = options;
+  const zenid = FLOW_PREFIX + options.zenid;
 
-  let outgoing: ((msg: any) => void) | null = null;
+  let outgoing: Outgoing | null = null;
 
   const stateChangedSub = Subscription.create();
   const eventSub = Subscription.create<FlowEvent<T, keyof T>>();

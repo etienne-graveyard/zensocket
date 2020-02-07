@@ -5,7 +5,8 @@ import {
   InternalMessageDown,
   HandleSubscribe,
   Unsubscribe,
-  ALL_MESSAGE_UP_TYPES
+  ALL_MESSAGE_UP_TYPES,
+  FLOW_PREFIX
 } from './types';
 import { Mappemonde } from 'mappemonde';
 import { queryToSlug } from './utils';
@@ -18,7 +19,8 @@ export interface FlowServerOptions<T extends Flows> {
 }
 
 export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>): FlowServer<T> {
-  const { outgoing, zenid, handleSubscribe } = options;
+  const { outgoing, handleSubscribe } = options;
+  const zenid = FLOW_PREFIX + options.zenid;
 
   const internal = Mappemonde.create<[keyof T, string], Unsubscribe>();
 

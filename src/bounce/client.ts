@@ -6,12 +6,14 @@ import {
   BounceRequestOptions,
   CancellableBounce,
   InternalMessageUp,
-  BounceErrorType
+  BounceErrorType,
+  BOUNCE_PREFIX
 } from './types';
 import { expectNever } from '../utils';
 import { BounceError } from './BounceError';
 import cuid from 'cuid';
 import { ControllablePromise, createControllablePromise } from './utils';
+import { Outgoing } from '../types';
 
 export interface BounceClientOptions {
   zenid: string;
@@ -21,9 +23,10 @@ export interface BounceClientOptions {
 export function createBounceClient<T extends Bounces>(
   options: BounceClientOptions
 ): BounceClient<T> {
-  const { zenid, defaultTimeout = null } = options;
+  const { defaultTimeout = null } = options;
+  const zenid = BOUNCE_PREFIX + options.zenid;
 
-  let outgoing: ((msg: any) => void) | null = null;
+  let outgoing: Outgoing | null = null;
 
   const pendingRequests = new Map<string, ControllablePromise<any>>();
 

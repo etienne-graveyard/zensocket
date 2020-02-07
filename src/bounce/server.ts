@@ -5,7 +5,8 @@ import {
   InternalMessageUp,
   ALL_MESSAGE_UP_TYPES,
   InternalMessageDown,
-  BounceErrorType
+  BounceErrorType,
+  BOUNCE_PREFIX
 } from './types';
 import { expectNever } from '../utils';
 
@@ -18,7 +19,8 @@ export interface BounceServerOptions<T extends Bounces> {
 export function createBounceServer<T extends Bounces>(
   options: BounceServerOptions<T>
 ): BounceServer {
-  const { outgoing, zenid, handleRequest } = options;
+  const { outgoing, handleRequest } = options;
+  const zenid = BOUNCE_PREFIX + options.zenid;
 
   const pendingRequests = new Set<string>();
 
