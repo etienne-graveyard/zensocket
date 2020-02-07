@@ -3,7 +3,7 @@ import { Outgoing } from '../types';
 
 export interface PingClientOptions {
   zenid: string;
-  pingInterval?: number | null;
+  pingInterval?: number;
 }
 
 export function createPingClient(options: PingClientOptions): PingClient {
@@ -46,7 +46,7 @@ export function createPingClient(options: PingClientOptions): PingClient {
     }
   }
 
-  function handleDownMessage(message: InternalMessageDown): void {
+  function handleDownMessage(_message: InternalMessageDown): void {
     // do nothing on pong
   }
 
