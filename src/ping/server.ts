@@ -26,7 +26,7 @@ export function createPingServer(options: PingServerOptions): PingServer {
     return false;
   }
 
-  function handleUpMessage(message: InternalMessageUp) {
+  function handleUpMessage(_message: InternalMessageUp) {
     if (!outgoing) {
       return;
     }
