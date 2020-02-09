@@ -4,13 +4,12 @@ import {
   InternalMessageUp,
   InternalMessageDown,
   HandleSubscribe,
-  Unsubscribe,
   ALL_MESSAGE_UP_TYPES,
   FLOW_PREFIX
 } from './types';
-import { Mappemonde } from 'mappemonde';
-import { queryToSlug } from './utils';
-import { expectNever } from '../utils';
+import { queryToKeys } from './utils';
+import { expectNever, createDeepMap, DeepMap } from '../utils';
+import { Unsubscribe } from 'suub';
 
 export interface FlowServerOptions<T extends Flows> {
   outgoing(message: any): void;
@@ -22,7 +21,7 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
   const { outgoing, handleSubscribe } = options;
   const zenid = FLOW_PREFIX + options.zenid;
 
-  const internal = Mappemonde.create<[keyof T, string], Unsubscribe>();
+  const internal: DeepMap<keyof T, Unsubscribe> = createDeepMap();
 
   return {
     incoming,
@@ -39,31 +38,31 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
   function dispatch<K extends keyof T>(
     event: K,
     query: T[K]['query'],
-    fragment: T[K]['fragment']
+    mutation: T[K]['mutations']
   ): void {
-    const slug = queryToSlug(query);
-    const isSubscribed = internal.has([event, slug]);
+    const keys = queryToKeys(query);
+    const isSubscribed = internal.get(event, keys);
     if (!isSubscribed) {
       return;
     }
     const mes: InternalMessageDown = {
       zenid,
-      type: 'Event',
+      type: 'Mutation',
       event: event as any,
       query,
-      fragment
+      mutation
     };
     outgoing(mes);
   }
 
   function unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void {
-    const slug = queryToSlug(query);
-    const unsubscribe = internal.get([event, slug]);
+    const keys = queryToKeys(query);
+    const unsubscribe = internal.get(event, keys);
     if (!unsubscribe) {
       return;
     }
     unsubscribe();
-    internal.delete([event, query]);
+    internal.delete(event, keys);
     const mes: InternalMessageDown = {
       zenid,
       type: 'UnsubscribedByServer',
@@ -92,9 +91,9 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
   }
 
   async function handleUpMessage(message: InternalMessageUp): Promise<void> {
-    const slug = queryToSlug(message.query);
+    const keys = queryToKeys(message.query);
     if (message.type === 'Subscribe') {
-      const isSubscribed = internal.has([message.event, slug]);
+      const isSubscribed = internal.get(message.event, keys);
       if (isSubscribed) {
         return;
       }
@@ -108,7 +107,7 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         const { state, unsubscribe } = await onSub(message.query, fragment =>
           dispatch(message.event, message.query, fragment)
         );
-        internal.set([message.event, slug], unsubscribe);
+        internal.set(message.event, keys, unsubscribe);
         const mes: InternalMessageDown = {
           zenid,
           type: 'Subscribed',
@@ -118,7 +117,7 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         outgoing(mes);
         return;
       } catch (error) {
-        internal.delete([message.event, slug]);
+        internal.delete(message.event, keys);
         const mes: InternalMessageDown = {
           zenid,
           type: 'Error',
@@ -130,13 +129,13 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
       }
     }
     if (message.type === 'Unsubscribe') {
-      const slug = queryToSlug(message.query);
-      const unsubscribe = internal.get([message.event, slug]);
+      const keys = queryToKeys(message.query);
+      const unsubscribe = internal.get(message.event, keys);
       if (!unsubscribe) {
         return;
       }
       unsubscribe();
-      internal.delete([message.event, slug]);
+      internal.delete(message.event, keys);
       const rep: InternalMessageDown = {
         zenid,
         type: 'Unsubscribed',

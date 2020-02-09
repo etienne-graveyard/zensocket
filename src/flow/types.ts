@@ -1,5 +1,6 @@
-import { SubscriptionCallback } from 'suub';
+import { SubscriptionCallback, Unsubscribe } from 'suub';
 import { ZensocketClient, ZensocketServer } from '../types';
+import { DeepMapState } from 'src/utils';
 
 const FLOW = Symbol.for('ZENSOCKET_FLOW');
 
@@ -7,66 +8,54 @@ export const FLOW_PREFIX = 'FLOW__';
 
 export type QueryObj = { [key: string]: string | number | null | boolean };
 
-export interface Flow<Query extends QueryObj | null, Initial = null, Fragment = null> {
+export interface Flow<Query extends QueryObj | null, Initial = null, Mutations = null> {
   [FLOW]: true;
   query: Query;
   initial: Initial;
-  fragment: Fragment;
+  mutations: Mutations;
 }
 
 export type FlowAny = Flow<any, any, any>;
 export type Flows = { [key: string]: FlowAny };
 
-interface FlowEventBase<T extends Flows, K extends keyof T> {
+type QueryParam<E extends FlowAny> = E['query'] extends null ? [] : [E['query']];
+
+export interface FlowRef<T extends Flows, K extends keyof T = keyof T> {
   event: K;
   query: T[K]['query'];
+  is<J extends keyof T>(name: K): this is FlowRef<T, J>;
 }
-
-export interface FlowEventInitial<T extends Flows, K extends keyof T> extends FlowEventBase<T, K> {
-  type: 'Initial';
-  data: T[K]['initial'];
-  is<J extends K>(type: J): this is FlowEventInitial<T, J>;
-  isOneOf<J extends K>(...types: ReadonlyArray<J>): this is FlowEventInitial<T, J>;
-}
-
-export interface FlowEventFragment<T extends Flows, K extends keyof T> extends FlowEventBase<T, K> {
-  type: 'Fragment';
-  data: T[K]['fragment'];
-  is<J extends K>(type: J): this is FlowEventFragment<T, J>;
-  isOneOf<J extends K>(...types: ReadonlyArray<J>): this is FlowEventFragment<T, J>;
-}
-
-export type FlowEvent<T extends Flows, K extends keyof T> =
-  | FlowEventInitial<T, K>
-  | FlowEventFragment<T, K>;
-
-export type FlowListener<T extends Flows> = (event: FlowEvent<T, keyof T>) => void;
-
-type QueryParam<E extends FlowAny> = E['query'] extends null ? [] : [E['query']];
 
 export enum FlowStatus {
   Void = 'Void',
   Subscribing = 'Subscribing',
   Subscribed = 'Subscribed',
   Unsubscribing = 'Unsubscribing',
+  Resubscribing = 'Resubscribing',
   Error = 'Error',
   UnsubscribedByServer = 'UnsubscribedByServer'
 }
 
-export type FlowState =
+export type FlowState<T> =
   | {
       status: FlowStatus.Void;
     }
   | {
-      status: FlowStatus.Subscribed;
+      status: FlowStatus.Subscribing;
+      messageId: string;
     }
   | {
       status: FlowStatus.Unsubscribing;
       messageId: string;
     }
   | {
-      status: FlowStatus.Subscribing;
+      status: FlowStatus.Subscribed;
+      data: T;
+    }
+  | {
+      status: FlowStatus.Resubscribing;
       messageId: string;
+      data: T;
     }
   | {
       status: FlowStatus.UnsubscribedByServer;
@@ -77,23 +66,30 @@ export type FlowState =
       errorType: 'Subscribing' | 'Unsubscribing';
     };
 
-export type Unsubscribe = () => void;
+export type FlowClientState<T extends Flows> = DeepMapState<
+  keyof T,
+  FlowState<T[keyof T]['initial']>
+>;
 
 export interface FlowClient<T extends Flows> extends ZensocketClient {
-  subscribe<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): Unsubscribe;
-  state<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowState;
-  on(listener: FlowListener<T>): Unsubscribe;
-  onStateChange(listener: SubscriptionCallback<void>): Unsubscribe;
+  ref<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowRef<T, K>;
+  getState(): FlowClientState<T>;
+  subscribeState(listener: SubscriptionCallback<void>): Unsubscribe;
+  subscribe<K extends keyof T>(event: K, query?: QueryObj | null): Unsubscribe;
 }
 
 export interface FlowServer<T extends Flows> extends ZensocketServer {
   unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
 }
 
+export type HandleMutation<T extends Flows> = {
+  [K in keyof T]: (state: T[K]['initial'], mutation: T[K]['mutations']) => T[K]['initial'];
+};
+
 export type HandleSubscribe<T extends Flows> = {
   [K in keyof T]: (
     query: T[K]['query'],
-    dispatch: (fragment: T[K]['fragment']) => void
+    dispatch: (fragment: T[K]['mutations']) => void
   ) => Promise<{ state: T[K]['initial']; unsubscribe: () => void }>;
 };
 
@@ -120,10 +116,10 @@ type InternalMessageDownData = {
     event: string;
     query: QueryObj | null;
   };
-  Event: {
+  Mutation: {
     event: string;
     query: QueryObj | null;
-    fragment: any;
+    mutation: any;
   };
   Error: {
     responseTo: string;
@@ -133,7 +129,7 @@ type InternalMessageDownData = {
 
 export const ALL_MESSAGE_DOWN_TYPES: { [K in keyof InternalMessageDownData]: null } = {
   Error: null,
-  Event: null,
+  Mutation: null,
   Subscribed: null,
   Unsubscribed: null,
   UnsubscribedByServer: null

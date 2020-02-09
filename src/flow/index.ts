@@ -4,11 +4,14 @@ export {
   Flow,
   FlowClient,
   Flows,
-  FlowEvent,
   FlowAny,
   FlowState,
   FlowServer,
   FlowStatus,
   QueryObj,
-  FlowResoure
+  FlowResoure,
+  FlowClientState,
+  HandleMutation,
+  HandleSubscribe,
+  FlowRef
 } from './types';
