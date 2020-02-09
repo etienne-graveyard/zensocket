@@ -11,7 +11,8 @@ import {
   ALL_MESSAGE_DOWN_TYPES,
   FLOW_PREFIX,
   FlowRef,
-  HandleMutation
+  HandleMutation,
+  FlowClientState
 } from './types';
 import cuid from 'cuid';
 import { queryToKeys } from './utils';
@@ -36,12 +37,20 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   let outgoing: Outgoing | null = null;
 
   // keep the state
-  const internal: DeepMap<keyof T, FlowState<any>> = createDeepMap();
+  const internal: DeepMap<keyof T, FlowState<any>> = createDeepMap({
+    immutable: true
+  });
   // keep the requested state
   const subRequests: DeepMap<keyof T, SubRequestsState> = createDeepMap();
 
   const emptyState: FlowState<any> = {
     status: FlowStatus.Void
+  };
+
+  let latestInternal = internal.getState();
+  let latestState: FlowClientState<T> = {
+    data: internal as any,
+    get: getItemState
   };
 
   const sentMessages: Map<string, InternalMessageUp> = new Map();
@@ -53,10 +62,22 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     connected,
     // manage
     subscribe,
-    getState: internal.getState,
+    getState,
     subscribeState: internal.subscribe,
     ref
   };
+
+  function getState(): FlowClientState<T> {
+    const intern = internal.getState();
+    if (intern !== latestInternal) {
+      latestInternal = intern;
+      latestState = {
+        data: latestInternal,
+        get: getItemState
+      };
+    }
+    return latestState;
+  }
 
   function ref<K extends keyof T>(event: K, query: QueryObj | null = null): FlowRef<T, K> {
     return {
@@ -373,17 +394,17 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     return false;
   }
 
-  // function getState<K extends keyof T>(
-  //   event: K,
-  //   query: QueryObj | null = null
-  // ): FlowState<T[K]['initial']> {
-  //   const keys = queryToKeys(query);
-  //   const intern = getInternalState(event, keys);
-  //   if (intern === null) {
-  //     return emptyState;
-  //   }
-  //   return intern;
-  // }
+  function getItemState<K extends keyof T>(
+    event: K,
+    query: QueryObj | null = null
+  ): FlowState<T[K]['initial']> {
+    const keys = queryToKeys(query);
+    const intern = getInternalState(event, keys);
+    if (intern === null) {
+      return emptyState;
+    }
+    return intern;
+  }
 
   function getInternalState<K extends keyof T>(event: K, keys: Array<any>): FlowState<any> | null {
     const eventState = internal.get(event, keys);

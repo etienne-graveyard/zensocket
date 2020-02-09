@@ -66,10 +66,10 @@ export type FlowState<T> =
       errorType: 'Subscribing' | 'Unsubscribing';
     };
 
-export type FlowClientState<T extends Flows> = DeepMapState<
-  keyof T,
-  FlowState<T[keyof T]['initial']>
->;
+export type FlowClientState<T extends Flows> = {
+  data: DeepMapState<keyof T, FlowState<T[keyof T]['initial']>>;
+  get<K extends keyof T>(event: K, query: T[K]['query']): FlowState<T[K]['initial']>;
+};
 
 export interface FlowClient<T extends Flows> extends ZensocketClient {
   ref<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowRef<T, K>;

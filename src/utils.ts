@@ -1,4 +1,4 @@
-import produce from 'immer';
+import immerProduce from 'immer';
 import { Subscription, SubscriptionCallback, Unsubscribe } from 'suub';
 
 export function expectNever<T extends never>(_val: T): void {
@@ -16,14 +16,28 @@ export interface DeepMap<K extends string | number | symbol, T> {
 
 export type DeepMapState<K extends string | number | symbol, T> = Map<any, T | DeepMapState<K, T>>;
 
-export function createDeepMap<K extends string | number | symbol, T>(): DeepMap<K, T> {
+export interface DeepMapOptions {
+  immutable?: boolean;
+}
+
+export function createDeepMap<K extends string | number | symbol, T>(
+  options: DeepMapOptions = {}
+): DeepMap<K, T> {
+  const { immutable = false } = options;
   // used to make sure each flow always return the same number of keys
   const keysLength = new Map<K, number>();
+
+  const produce: typeof immerProduce = immutable
+    ? immerProduce
+    : (((s: any, exec: any) => {
+        exec(s);
+        return s;
+      }) as any);
 
   let internal: DeepMapState<K, T> = new Map();
   const stateSub = Subscription.create();
 
-  return {
+  const result: DeepMap<K, T> = {
     get,
     delete: remove,
     set,
@@ -32,7 +46,11 @@ export function createDeepMap<K extends string | number | symbol, T>(): DeepMap<
     subscribe: stateSub.subscribe
   };
 
-  function chekKeys(group: K, keys: Array<any>) {
+  (result as any).__internal = internal;
+
+  return result;
+
+  function checkKeys(group: K, keys: Array<any>) {
     const v = keysLength.get(group);
     if (!v) {
       keysLength.set(group, keys.length);
@@ -46,7 +64,7 @@ export function createDeepMap<K extends string | number | symbol, T>(): DeepMap<
   function forEach(exec: (group: K, keys: Array<any>, value: T) => void): void {
     internal.forEach((sub, group) => {
       const size = keysLength.get(group);
-      if (!size) {
+      if (size === undefined) {
         throw new Error(`Cannot find size for group ${group}`);
       }
       let values: Array<[Array<any>, Map<any, any>]> = [[[], sub as any]];
@@ -66,7 +84,7 @@ export function createDeepMap<K extends string | number | symbol, T>(): DeepMap<
   }
 
   function remove(group: K, keys: Array<any>) {
-    chekKeys(group, keys);
+    checkKeys(group, keys);
     if (!getInternal(internal, group, keys)) {
       return;
     }
@@ -133,14 +151,18 @@ export function createDeepMap<K extends string | number | symbol, T>(): DeepMap<
   }
 
   function get(group: K, keys: Array<any>): T | undefined {
-    chekKeys(group, keys);
+    checkKeys(group, keys);
     return getInternal(internal, group, keys);
   }
 
   function set(group: K, keys: Array<any>, value: T) {
-    chekKeys(group, keys);
+    checkKeys(group, keys);
     internal = produce(internal, (draft: any) => {
       let root = draft.get(group);
+      if (keys.length === 0) {
+        draft.set(group, value);
+        return;
+      }
       if (!root) {
         root = new Map();
         draft.set(group, root);
