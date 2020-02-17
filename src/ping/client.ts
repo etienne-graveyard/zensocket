@@ -16,8 +16,15 @@ export function createPingClient(options: PingClientOptions): PingClient {
   return {
     connected,
     disconnected,
-    incoming
+    incoming,
+    destroy
   };
+
+  function destroy(): void {
+    if (pingTimer) {
+      clearTimeout(pingTimer);
+    }
+  }
 
   function disconnected(): void {
     outgoing = null;

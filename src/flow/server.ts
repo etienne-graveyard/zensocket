@@ -25,9 +25,17 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
 
   return {
     incoming,
+    destroy,
     // dispatch,
     unsubscribe
   };
+
+  function destroy(): void {
+    // unsub all
+    internal.forEach((_group, _keys, value) => {
+      value();
+    });
+  }
 
   function incoming(message: any): void {
     if (isUpMessage(message)) {

@@ -33,10 +33,15 @@ export function createBounceClient<T extends Bounces>(
   return {
     disconnected,
     connected,
+    destroy,
     incoming,
     cancellable,
     request
   };
+
+  function destroy(): void {
+    disconnected();
+  }
 
   function disconnected(): void {
     outgoing = null;

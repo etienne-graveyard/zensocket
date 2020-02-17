@@ -89,6 +89,10 @@ export function createDeepMap<K extends string | number | symbol, T>(
       return;
     }
     internal = produce(internal, (draft: any) => {
+      if (keys.length === 0) {
+        draft.delete(group);
+        return;
+      }
       let root = draft.get(group);
       if (!root) {
         return;
@@ -103,7 +107,6 @@ export function createDeepMap<K extends string | number | symbol, T>(
           } else {
             let next = current.get(key);
             if (!next) {
-              console.log('no next');
               return;
             }
             current = next;

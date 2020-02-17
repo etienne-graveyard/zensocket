@@ -6,7 +6,8 @@ export {
   BounceErrorType,
   BounceServer,
   Bounces,
-  CancellableBounce
+  CancellableBounce,
+  HandleRequest
 } from './types';
 export { BounceError } from './BounceError';
 export { BounceClientOptions, createBounceClient } from './client';

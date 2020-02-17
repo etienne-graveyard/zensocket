@@ -10,8 +10,11 @@ export function createPingServer(options: PingServerOptions): PingServer {
   const zenid = PING_PREFIX + options.zenid;
 
   return {
-    incoming
+    incoming,
+    destroy
   };
+
+  function destroy(): void {}
 
   function incoming(message: any): void {
     if (isUpMessage(message)) {

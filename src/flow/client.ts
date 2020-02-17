@@ -60,12 +60,17 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     incoming,
     disconnected,
     connected,
+    destroy,
     // manage
     subscribe,
     getState,
     subscribeState: internal.subscribe,
     ref
   };
+
+  function destroy(): void {
+    console.log(`Should we do something here ?`);
+  }
 
   function getState(): FlowClientState<T> {
     const intern = internal.getState();

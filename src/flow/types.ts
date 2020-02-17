@@ -1,6 +1,6 @@
 import { SubscriptionCallback, Unsubscribe } from 'suub';
 import { ZensocketClient, ZensocketServer } from '../types';
-import { DeepMapState } from 'src/utils';
+import { DeepMapState } from '../utils';
 
 const FLOW = Symbol.for('ZENSOCKET_FLOW');
 

@@ -25,8 +25,14 @@ export function createBounceServer<T extends Bounces>(
   const pendingRequests = new Set<string>();
 
   return {
-    incoming
+    incoming,
+    destroy
   };
+
+  function destroy(): void {
+    // cancel all
+    pendingRequests.clear();
+  }
 
   function incoming(message: any): void {
     if (isUpMessage(message)) {
