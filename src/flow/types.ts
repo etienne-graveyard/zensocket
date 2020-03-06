@@ -30,10 +30,10 @@ export enum FlowStatus {
   Void = 'Void',
   Subscribing = 'Subscribing',
   Subscribed = 'Subscribed',
+  Offline = 'Offline',
   Unsubscribing = 'Unsubscribing',
   Resubscribing = 'Resubscribing',
-  Error = 'Error',
-  UnsubscribedByServer = 'UnsubscribedByServer'
+  Error = 'Error'
 }
 
 export type FlowState<T> =
@@ -53,12 +53,13 @@ export type FlowState<T> =
       data: T;
     }
   | {
-      status: FlowStatus.Resubscribing;
-      messageId: string;
+      status: FlowStatus.Offline;
       data: T;
     }
   | {
-      status: FlowStatus.UnsubscribedByServer;
+      status: FlowStatus.Resubscribing;
+      messageId: string;
+      data: T;
     }
   | {
       status: FlowStatus.Error;

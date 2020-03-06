@@ -10,6 +10,7 @@ export interface DeepMap<K extends string | number | symbol, T> {
   set(group: K, keys: Array<any>, value: T): void;
   delete(group: K, keys: Array<any>): void;
   forEach(exec: (group: K, keys: Array<any>, value: T) => void): void;
+  updateEach(exec: (group: K, keys: Array<any>, value: T) => T): void;
   getState(): DeepMapState<K, T>;
   subscribe(listener: SubscriptionCallback<void>): Unsubscribe;
 }
@@ -42,6 +43,7 @@ export function createDeepMap<K extends string | number | symbol, T>(
     delete: remove,
     set,
     forEach,
+    updateEach,
     getState: () => internal,
     subscribe: stateSub.subscribe
   };
@@ -83,12 +85,24 @@ export function createDeepMap<K extends string | number | symbol, T>(
     });
   }
 
+  function updateEach(exec: (group: K, keys: Array<any>, value: T) => T): void {
+    internal = produce(internal, (draft: DeepMapState<K, T>) => {
+      forEach((group, keys, value) => {
+        const nextValue = exec(group, keys, value);
+        if (nextValue !== value) {
+          setInternal(draft, group, keys, nextValue);
+        }
+      });
+    });
+    stateSub.call();
+  }
+
   function remove(group: K, keys: Array<any>) {
     checkKeys(group, keys);
     if (!getInternal(internal, group, keys)) {
       return;
     }
-    internal = produce(internal, (draft: any) => {
+    internal = produce(internal, (draft: DeepMapState<K, T>) => {
       if (keys.length === 0) {
         draft.delete(group);
         return;
@@ -158,35 +172,39 @@ export function createDeepMap<K extends string | number | symbol, T>(
     return getInternal(internal, group, keys);
   }
 
-  function set(group: K, keys: Array<any>, value: T) {
-    checkKeys(group, keys);
-    internal = produce(internal, (draft: any) => {
-      let root = draft.get(group);
-      if (keys.length === 0) {
-        draft.set(group, value);
-        return;
-      }
-      if (!root) {
-        root = new Map();
-        draft.set(group, root);
-      }
-      let current: T | DeepMapState<K, T> = root;
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        if (current instanceof Map) {
-          if (i === keys.length - 1) {
-            // last set value
-            current.set(key, value);
-          } else {
-            let next = current.get(key);
-            if (!next) {
-              next = new Map();
-              current.set(key, next);
-            }
-            current = next;
+  function setInternal(draft: DeepMapState<K, T>, group: K, keys: Array<any>, value: T) {
+    let root = draft.get(group);
+    if (keys.length === 0) {
+      draft.set(group, value);
+      return;
+    }
+    if (!root) {
+      root = new Map();
+      draft.set(group, root);
+    }
+    let current: T | DeepMapState<K, T> = root;
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (current instanceof Map) {
+        if (i === keys.length - 1) {
+          // last set value
+          current.set(key, value);
+        } else {
+          let next = current.get(key);
+          if (!next) {
+            next = new Map();
+            current.set(key, next);
           }
+          current = next;
         }
       }
+    }
+  }
+
+  function set(group: K, keys: Array<any>, value: T) {
+    checkKeys(group, keys);
+    internal = produce(internal, (draft: DeepMapState<K, T>) => {
+      setInternal(draft, group, keys, value);
     });
     stateSub.call();
   }

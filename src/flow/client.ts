@@ -93,7 +93,27 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   }
 
   function disconnected(): void {
+    console.log('disconnected');
     outgoing = null;
+    // change states
+    internal.updateEach((_group, _keys, state) => {
+      console.log(state);
+      if (state.status === FlowStatus.Offline || state.status === FlowStatus.Void) {
+        return state;
+      }
+      if (state.status === FlowStatus.Resubscribing || state.status === FlowStatus.Subscribed) {
+        return {
+          status: FlowStatus.Offline,
+          data: state.data
+        };
+      }
+      if (state.status === FlowStatus.Unsubscribing) {
+        return { status: FlowStatus.Void };
+      }
+      console.warn('Unhandled state on disconnected', state);
+      return state;
+    });
+    console.log(internal);
   }
 
   function connected(out: (msg: any) => void): void {
@@ -103,7 +123,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       if (state.subs.size > 0) {
         setTimeout(() => {
           // force sub on connect
-          update(event, keys, state.query, true);
+          update(event, keys, state.query);
         });
       }
     });
@@ -118,19 +138,19 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
         if (unsubscribeDelay) {
           setTimeout(() => {
             sub.subs.delete(unsub);
-            update(event, keys, query, false);
+            update(event, keys, query);
           }, unsubscribeDelay);
         } else {
           sub.subs.delete(unsub);
           setTimeout(() => {
-            update(event, keys, query, false);
+            update(event, keys, query);
           });
         }
       }
     };
     sub.subs.add(unsub);
     setTimeout(() => {
-      update(event, keys, query, false);
+      update(event, keys, query);
     });
     return unsub;
   }
@@ -152,34 +172,34 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     return created;
   }
 
-  function update<K extends keyof T>(
-    event: K,
-    keys: Array<any>,
-    query: QueryObj | null,
-    forceSub: boolean
-  ): void {
+  function update<K extends keyof T>(event: K, keys: Array<any>, query: QueryObj | null): void {
     const sub = subRequests.get(event, keys);
     if (!sub || sub.subs.size === 0) {
       if (sub && sub.subs.size === 0) {
         subRequests.delete(event, keys);
       }
-      unsubscribeInternal(event, keys, query);
+      ensureUnsubscribed(event, keys, query);
       return;
     }
-    subscribeInternal(event, keys, query, forceSub);
+    ensureSubscribed(event, keys, query);
   }
 
-  function subscribeInternal<K extends keyof T>(
+  function ensureSubscribed<K extends keyof T>(
     event: K,
     keys: Array<any>,
-    query: QueryObj | null,
-    forceSub: boolean
+    query: QueryObj | null
   ): void {
     if (outgoing === null) {
       return;
     }
     const intern = ensureInternalState(event, keys);
+    if (intern.status === FlowStatus.Subscribed) {
+      return;
+    }
     if (intern.status === FlowStatus.Subscribing) {
+      return;
+    }
+    if (intern.status === FlowStatus.Resubscribing) {
       return;
     }
     // if Unsubscribing cancel the unsubscription
@@ -188,23 +208,6 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       if (out) {
         sentMessages.delete(intern.messageId);
       }
-    }
-    if (intern.status === FlowStatus.Subscribed && forceSub) {
-      const message: InternalMessageUp = {
-        zenid,
-        type: 'Subscribe',
-        id: cuid.slug(),
-        event: event as string,
-        query
-      };
-      sentMessages.set(message.id, message);
-      setInternalState(event, keys, {
-        status: FlowStatus.Resubscribing,
-        data: intern.data,
-        messageId: message.id
-      });
-      outgoing(message);
-      return;
     }
     if (intern.status === FlowStatus.Void) {
       const message: InternalMessageUp = {
@@ -222,9 +225,27 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       outgoing(message);
       return;
     }
+    if (intern.status === FlowStatus.Offline) {
+      const message: InternalMessageUp = {
+        zenid,
+        type: 'Subscribe',
+        id: cuid.slug(),
+        event: event as string,
+        query
+      };
+      sentMessages.set(message.id, message);
+      setInternalState(event, keys, {
+        status: FlowStatus.Resubscribing,
+        data: intern.data,
+        messageId: message.id
+      });
+      outgoing(message);
+      return;
+    }
+    console.warn('Unhandled state', intern);
   }
 
-  function unsubscribeInternal<K extends keyof T>(
+  function ensureUnsubscribed<K extends keyof T>(
     event: K,
     keys: Array<any>,
     query: QueryObj | null
@@ -273,13 +294,12 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       if (!state) {
         return;
       }
-      if (state.status !== FlowStatus.Subscribing) {
-        return;
+      if (state.status === FlowStatus.Subscribing || state.status === FlowStatus.Resubscribing) {
+        setInternalState(out.event, keys, {
+          status: FlowStatus.Subscribed,
+          data: message.initialData
+        });
       }
-      setInternalState(out.event, keys, {
-        status: FlowStatus.Subscribed,
-        data: message.initialData
-      });
       return;
     }
     if (message.type === 'Unsubscribed') {
@@ -355,7 +375,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       if (!state) {
         return;
       }
-      setInternalState(message.event, keys, { status: FlowStatus.UnsubscribedByServer });
+      internal.delete(message.event, keys);
       return;
     }
     expectNever(message);
