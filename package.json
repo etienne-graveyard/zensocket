@@ -20,13 +20,13 @@
     "cuid": "^2.1.8",
     "immer": "^5.3.4",
     "mappemonde": "^1.2.1",
-    "suub": "^1.5.0"
+    "suub": "^2.0.3"
   },
   "devDependencies": {
-    "@types/jest": "^25.1.2",
+    "@types/jest": "^25.1.4",
     "np": "^5.2.1",
     "tsdx": "^0.12.3",
-    "typescript": "^3.7.5"
+    "typescript": "^3.8.3"
   },
   "description": "An base for creating a websocket server.",
   "directories": {
