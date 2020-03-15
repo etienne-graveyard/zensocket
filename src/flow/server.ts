@@ -129,7 +129,7 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         const mes: InternalMessageDown = {
           zenid,
           type: 'Error',
-          error,
+          error: String(error),
           responseTo: message.id
         };
         outgoing(mes);
