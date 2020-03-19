@@ -1,5 +1,7 @@
-import immerProduce from 'immer';
+import immerProduce, { enableMapSet } from 'immer';
 import { Subscription, SubscriptionCallback, Unsubscribe } from 'suub';
+
+enableMapSet();
 
 export function expectNever<T extends never>(_val: T): void {
   throw new Error(`Expected never !`);
