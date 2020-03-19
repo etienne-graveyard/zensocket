@@ -60,10 +60,10 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     disconnected,
     connected,
     destroy,
+    getState,
+    subscribe: internal.subscribe,
     flows: {
       subscribe,
-      getState,
-      subscribeState: internal.subscribe,
       ref
     }
   };
