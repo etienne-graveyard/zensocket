@@ -26,8 +26,9 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
   return {
     incoming,
     destroy,
-    // dispatch,
-    unsubscribe
+    flows: {
+      unsubscribe
+    }
   };
 
   function destroy(): void {

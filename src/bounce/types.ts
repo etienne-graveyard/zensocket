@@ -29,16 +29,18 @@ export type CancellableBounce<T extends BounceAny> = {
 export interface BounceServer extends ZensocketServer {}
 
 export interface BounceClient<T extends Bounces> extends ZensocketClient {
-  cancellable<K extends keyof T>(
-    event: K,
-    data: T[K]['request'],
-    options?: BounceRequestOptions
-  ): CancellableBounce<T[K]>;
-  request<K extends keyof T>(
-    event: K,
-    data: T[K]['request'],
-    options?: BounceRequestOptions
-  ): Promise<T[K]['response']>;
+  bounces: {
+    cancellable<K extends keyof T>(
+      event: K,
+      data: T[K]['request'],
+      options?: BounceRequestOptions
+    ): CancellableBounce<T[K]>;
+    request<K extends keyof T>(
+      event: K,
+      data: T[K]['request'],
+      options?: BounceRequestOptions
+    ): Promise<T[K]['response']>;
+  };
 }
 
 /**

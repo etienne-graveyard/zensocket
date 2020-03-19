@@ -56,16 +56,16 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   const sentMessages: Map<string, InternalMessageUp> = new Map();
 
   return {
-    // base
     incoming,
     disconnected,
     connected,
     destroy,
-    // manage
-    subscribe,
-    getState,
-    subscribeState: internal.subscribe,
-    ref
+    flows: {
+      subscribe,
+      getState,
+      subscribeState: internal.subscribe,
+      ref
+    }
   };
 
   function destroy(): void {

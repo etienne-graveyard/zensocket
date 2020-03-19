@@ -73,14 +73,18 @@ export type FlowClientState<T extends Flows> = {
 };
 
 export interface FlowClient<T extends Flows> extends ZensocketClient {
-  ref<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowRef<T, K>;
-  getState(): FlowClientState<T>;
-  subscribeState(listener: SubscriptionCallback<void>): Unsubscribe;
-  subscribe<K extends keyof T>(event: K, query?: QueryObj | null): Unsubscribe;
+  flows: {
+    ref<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowRef<T, K>;
+    getState(): FlowClientState<T>;
+    subscribeState(listener: SubscriptionCallback<void>): Unsubscribe;
+    subscribe<K extends keyof T>(event: K, query?: QueryObj | null): Unsubscribe;
+  };
 }
 
 export interface FlowServer<T extends Flows> extends ZensocketServer {
-  unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
+  flows: {
+    unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
+  };
 }
 
 export type HandleMutation<T extends Flows> = {

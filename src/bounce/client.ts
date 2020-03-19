@@ -35,8 +35,10 @@ export function createBounceClient<T extends Bounces>(
     connected,
     destroy,
     incoming,
-    cancellable,
-    request
+    bounces: {
+      cancellable,
+      request
+    }
   };
 
   function destroy(): void {

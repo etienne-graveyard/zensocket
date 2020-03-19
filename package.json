@@ -11,7 +11,7 @@
   "typings": "dist/index.d.ts",
   "scripts": {
     "build": "tsdx build --target web",
-    "start": "tsdx watch --target web",
+    "start": "tsdx watch --noClean --target web",
     "test": "tsdx test",
     "typecheck": "tsc --noEmit",
     "pub": "yarn build && np"
