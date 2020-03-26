@@ -25,7 +25,7 @@
   "devDependencies": {
     "@types/jest": "^25.1.4",
     "np": "^5.2.1",
-    "tsdx": "^0.12.3",
+    "tsdx": "^0.13.0",
     "typescript": "^3.8.3"
   },
   "description": "An base for creating a websocket server.",
