@@ -72,7 +72,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   };
 
   function destroy(): void {
-    console.log(`Should we do something here ?`);
+    console.warn(`Destroy: Should we do something here ?`);
   }
 
   function getState(): FlowClientState<T> {
@@ -97,11 +97,9 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   }
 
   function disconnected(): void {
-    console.log('disconnected');
     outgoing = null;
     // change states
     internal.updateEach((_group, _keys, state) => {
-      console.log(state);
       if (state.status === FlowStatus.Offline || state.status === FlowStatus.Void) {
         return state;
       }
@@ -117,7 +115,6 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       console.warn('Unhandled state on disconnected', state);
       return state;
     });
-    console.log(internal);
   }
 
   function connected(out: (msg: any) => void): void {
@@ -415,7 +412,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
         if (Object.keys(ALL_MESSAGE_DOWN_TYPES).includes(message.type)) {
           return true;
         } else {
-          console.log(message);
+          console.warn(message);
           console.warn(`Invalid message.type`);
         }
       }

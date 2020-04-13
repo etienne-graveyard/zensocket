@@ -91,7 +91,7 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
         if (Object.keys(ALL_MESSAGE_UP_TYPES).includes(message.type)) {
           return true;
         } else {
-          console.log(message);
+          console.warn(message);
           console.warn(`Invalid message.type`);
         }
       }

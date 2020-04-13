@@ -177,7 +177,7 @@ export function createBounceClient<T extends Bounces>(
         if (Object.keys(ALL_MESSAGE_DOWN_TYPES).includes(message.type)) {
           return true;
         } else {
-          console.log(message);
+          console.warn(message);
           console.warn(`Invalid message.type`);
         }
       }
