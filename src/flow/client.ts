@@ -34,6 +34,8 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   const { unsubscribeDelay = false, handleMutations } = options;
   const zenid = FLOW_PREFIX + options.zenid;
 
+  const VOID_FLOW_STATE: FlowState<any> = { status: FlowStatus.Void };
+
   let outgoing: Outgoing | null = null;
 
   // keep the state
@@ -50,7 +52,8 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   let latestInternal = internal.getState();
   let latestState: FlowClientState<T> = {
     data: internal as any,
-    get: getItemState
+    get: getItemState,
+    getVoid: getItemVoidState
   };
 
   const sentMessages: Map<string, InternalMessageUp> = new Map();
@@ -78,7 +81,8 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       latestInternal = intern;
       latestState = {
         data: latestInternal,
-        get: getItemState
+        get: getItemState,
+        getVoid: getItemVoidState
       };
     }
     return latestState;
@@ -429,6 +433,10 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       return emptyState;
     }
     return intern;
+  }
+
+  function getItemVoidState<K extends keyof T>(_event: K): FlowState<T[K]['initial']> {
+    return VOID_FLOW_STATE;
   }
 
   function getInternalState<K extends keyof T>(event: K, keys: Array<any>): FlowState<any> | null {

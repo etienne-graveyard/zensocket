@@ -70,6 +70,7 @@ export type FlowState<T> =
 export type FlowClientState<T extends Flows> = {
   data: DeepMapState<keyof T, FlowState<T[keyof T]['initial']>>;
   get<K extends keyof T>(event: K, query: T[K]['query']): FlowState<T[K]['initial']>;
+  getVoid<K extends keyof T>(event: K): FlowState<T[K]['initial']>;
 };
 
 export interface FlowClient<T extends Flows> extends ZensocketClient {
