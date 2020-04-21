@@ -78,7 +78,7 @@ export interface FlowClient<T extends Flows> extends ZensocketClient {
   subscribe(listener: SubscriptionCallback<void>): Unsubscribe;
   flows: {
     ref<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowRef<T, K>;
-    subscribe<K extends keyof T>(event: K, query?: QueryObj | null): Unsubscribe;
+    subscribe<K extends keyof T>(event: K, query: T[K]['query']): Unsubscribe;
   };
 }
 
@@ -92,10 +92,15 @@ export type HandleMutation<T extends Flows> = {
   [K in keyof T]: (state: T[K]['initial'], mutation: T[K]['mutations']) => T[K]['initial'];
 };
 
-export type HandleSubscribe<T extends Flows> = {
+export interface HandleSubscribeData<Query, Mutation, Context> {
+  query: Query;
+  dispatch: (mutation: Mutation) => void;
+  context: Context;
+}
+
+export type HandleSubscribe<T extends Flows, Context> = {
   [K in keyof T]: (
-    query: T[K]['query'],
-    dispatch: (fragment: T[K]['mutations']) => void
+    data: HandleSubscribeData<T[K]['query'], T[K]['mutations'], Context>
   ) => Promise<{ state: T[K]['initial']; unsubscribe: () => void }>;
 };
 

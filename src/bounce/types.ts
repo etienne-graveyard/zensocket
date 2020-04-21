@@ -13,8 +13,14 @@ export interface Bounce<Request, Response> {
 export type BounceAny = Bounce<any, any>;
 export type Bounces = { [key: string]: BounceAny };
 
-export type HandleRequest<T extends Bounces> = {
-  [K in keyof T]: (data: T[K]['request'], canceled: () => Boolean) => Promise<T[K]['response']>;
+export interface HandleRequestData<Data, Context> {
+  data: Data;
+  context: Context;
+  canceled: () => Boolean;
+}
+
+export type HandleRequest<T extends Bounces, Context> = {
+  [K in keyof T]: (data: HandleRequestData<T[K]['request'], Context>) => Promise<T[K]['response']>;
 };
 
 export interface BounceRequestOptions {

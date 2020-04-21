@@ -11,14 +11,17 @@ import { queryToKeys } from './utils';
 import { expectNever, createDeepMap, DeepMap } from '../utils';
 import { Unsubscribe } from 'suub';
 
-export interface FlowServerOptions<T extends Flows> {
+export interface FlowServerOptions<T extends Flows, Context> {
+  context: Context;
   outgoing(message: any): void;
   zenid: string;
-  handleSubscribe: HandleSubscribe<T>;
+  handleSubscribe: HandleSubscribe<T, Context>;
 }
 
-export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>): FlowServer<T> {
-  const { outgoing, handleSubscribe } = options;
+export function createFlowServer<T extends Flows, Context>(
+  options: FlowServerOptions<T, Context>
+): FlowServer<T> {
+  const { outgoing, handleSubscribe, context } = options;
   const zenid = FLOW_PREFIX + options.zenid;
 
   const internal: DeepMap<keyof T, Unsubscribe> = createDeepMap();
@@ -108,14 +111,16 @@ export function createFlowServer<T extends Flows>(options: FlowServerOptions<T>)
       }
       try {
         const onSub:
-          | HandleSubscribe<T>[keyof HandleSubscribe<T>]
+          | HandleSubscribe<T, Context>[keyof HandleSubscribe<T, Context>]
           | undefined = (handleSubscribe as any)[message.event];
         if (!onSub) {
           throw new Error('Missing on sub');
         }
-        const { state, unsubscribe } = await onSub(message.query, fragment =>
-          dispatch(message.event, message.query, fragment)
-        );
+        const { state, unsubscribe } = await onSub({
+          query: message.query,
+          context,
+          dispatch: mutation => dispatch(message.event, message.query, mutation)
+        });
         internal.set(message.event, keys, unsubscribe);
         const mes: InternalMessageDown = {
           zenid,

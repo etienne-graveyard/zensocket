@@ -10,16 +10,17 @@ import {
 } from './types';
 import { expectNever } from '../utils';
 
-export interface BounceServerOptions<T extends Bounces> {
+export interface BounceServerOptions<T extends Bounces, Context> {
   outgoing(message: any): void;
   zenid: string;
-  handleRequest: HandleRequest<T>;
+  context: Context;
+  handleRequest: HandleRequest<T, Context>;
 }
 
-export function createBounceServer<T extends Bounces>(
-  options: BounceServerOptions<T>
+export function createBounceServer<T extends Bounces, Context>(
+  options: BounceServerOptions<T, Context>
 ): BounceServer {
-  const { outgoing, handleRequest } = options;
+  const { outgoing, handleRequest, context } = options;
   const zenid = BOUNCE_PREFIX + options.zenid;
 
   const pendingRequests = new Set<string>();
@@ -76,7 +77,11 @@ export function createBounceServer<T extends Bounces>(
       }
       pendingRequests.add(message.id);
       try {
-        const res = await handler(message.data, () => canceled(message.id));
+        const res = await handler({
+          data: message.data,
+          canceled: () => canceled(message.id),
+          context
+        });
         if (pendingRequests.has(message.id)) {
           const mes: InternalMessageDown = {
             zenid,
@@ -87,6 +92,8 @@ export function createBounceServer<T extends Bounces>(
           outgoing(mes);
         }
       } catch (error) {
+        console.error(error);
+        console.error(`Error in ${message.bounce}, see above`);
         if (pendingRequests.has(message.id)) {
           const mes: InternalMessageDown = {
             zenid,
