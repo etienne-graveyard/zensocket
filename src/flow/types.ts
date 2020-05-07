@@ -1,6 +1,9 @@
-import { SubscriptionCallback, Unsubscribe } from 'suub';
+import { Unsubscribe, SubscribeMethod } from 'suub';
 import { ZensocketClient, ZensocketServer } from '../types';
-import { DeepMapState } from '../utils';
+
+/**
+ * GLOBAL
+ */
 
 const FLOW = Symbol.for('ZENSOCKET_FLOW');
 
@@ -8,108 +11,80 @@ export const FLOW_PREFIX = 'FLOW__';
 
 export type QueryObj = { [key: string]: string | number | null | boolean };
 
-export interface Flow<Query extends QueryObj | null, Initial = null, Mutations = null> {
+export interface Flow<Query extends QueryObj | null, Initial, Message, State> {
   [FLOW]: true;
   query: Query;
   initial: Initial;
-  mutations: Mutations;
+  message: Message;
+  state: State;
 }
 
-export type FlowAny = Flow<any, any, any>;
+export type FlowAny = Flow<any, any, any, any>;
 export type Flows = { [key: string]: FlowAny };
 
-type QueryParam<E extends FlowAny> = E['query'] extends null ? [] : [E['query']];
-
-export interface FlowRef<T extends Flows, K extends keyof T = keyof T> {
-  event: K;
-  query: T[K]['query'];
-  is<J extends keyof T>(name: K): this is FlowRef<T, J>;
-}
-
-export enum FlowStatus {
-  Void = 'Void',
-  Subscribing = 'Subscribing',
-  Subscribed = 'Subscribed',
-  Offline = 'Offline',
-  Unsubscribing = 'Unsubscribing',
-  Resubscribing = 'Resubscribing',
-  Error = 'Error'
-}
-
-export type FlowState<T> =
-  | {
-      status: FlowStatus.Void;
-    }
-  | {
-      status: FlowStatus.Subscribing;
-      messageId: string;
-    }
-  | {
-      status: FlowStatus.Unsubscribing;
-      messageId: string;
-    }
-  | {
-      status: FlowStatus.Subscribed;
-      data: T;
-    }
-  | {
-      status: FlowStatus.Offline;
-      data: T;
-    }
-  | {
-      status: FlowStatus.Resubscribing;
-      messageId: string;
-      data: T;
-    }
-  | {
-      status: FlowStatus.Error;
-      error: any;
-      errorType: 'Subscribing' | 'Unsubscribing';
-    };
-
-export type FlowClientState<T extends Flows> = {
-  data: DeepMapState<keyof T, FlowState<T[keyof T]['initial']>>;
-  get<K extends keyof T>(event: K, query: T[K]['query']): FlowState<T[K]['initial']>;
-  getVoid<K extends keyof T>(event: K): FlowState<T[K]['initial']>;
-};
-
-export interface FlowClient<T extends Flows> extends ZensocketClient {
-  getState(): FlowClientState<T>;
-  subscribe(listener: SubscriptionCallback<void>): Unsubscribe;
-  flows: {
-    ref<K extends keyof T>(event: K, ...query: QueryParam<T[K]>): FlowRef<T, K>;
-    subscribe<K extends keyof T>(event: K, query: T[K]['query']): Unsubscribe;
-  };
-}
+/**
+ * Server
+ */
 
 export interface FlowServer<T extends Flows> extends ZensocketServer {
-  flows: {
-    unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void;
-  };
+  // force unmount a flow (send an UnsubscribedByServer)
+  unmount<K extends keyof T>(event: K, query: T[K]['query']): void;
 }
 
-export type HandleMutation<T extends Flows> = {
-  [K in keyof T]: (state: T[K]['initial'], mutation: T[K]['mutations']) => T[K]['initial'];
-};
-
-export interface HandleSubscribeData<Query, Mutation, Context> {
+export interface FlowServerMountParams<Query, Message, Context> {
+  emitMessage: (message: Message) => void;
   query: Query;
-  dispatch: (mutation: Mutation) => void;
   context: Context;
 }
 
-export type HandleSubscribe<T extends Flows, Context> = {
+export interface FlowServerMountResult<Initial> {
+  getInitial: () => Initial;
+  unmount: () => void;
+}
+
+export type FlowServerMountHandlers<T extends Flows, Context> = {
   [K in keyof T]: (
-    data: HandleSubscribeData<T[K]['query'], T[K]['mutations'], Context>
-  ) => Promise<{ state: T[K]['initial']; unsubscribe: () => void }>;
+    data: FlowServerMountParams<T[K]['query'], T[K]['message'], Context>
+  ) => Promise<FlowServerMountResult<T[K]['initial']>>;
 };
 
-export type FlowResoure<T extends Flows, K extends keyof T = keyof T> = {
-  [K in keyof T]: {
-    event: K;
-    query: T[K]['query'];
+/**
+ * Client
+ */
+
+export interface FlowClient<T extends Flows> extends ZensocketClient {
+  subscribe<K extends keyof T>(
+    event: K,
+    query: T[K]['query'],
+    onState: (state: FlowClientState<T[K]['state']>) => void
+  ): Unsubscribe;
+  connectionStatus: {
+    get(): FlowConnectionStatus;
+    subscribe: SubscribeMethod<FlowConnectionStatus>;
   };
-}[K];
+}
+
+export type FlowConnectionStatus = 'Void' | 'Connected' | 'Offline';
+
+export type FlowClientState<State> = { resolved: false } | { resolved: true; state: State };
+
+export interface FlowClientMountParams<Initial, Query, State> {
+  initial: Initial;
+  emitState: (state: State) => void;
+  query: Query;
+}
+
+export interface FlowClientMountResponse<Message, State> {
+  getState: () => State;
+  onMessage: (message: Message) => void;
+  unmount: () => void;
+}
+
+export type FlowClientMountHandlers<T extends Flows> = {
+  [K in keyof T]: (
+    data: FlowClientMountParams<T[K]['initial'], T[K]['query'], T[K]['state']>
+  ) => FlowClientMountResponse<T[K]['message'], T[K]['state']>;
+};
 
 /**
  * Internal
@@ -118,29 +93,30 @@ export type FlowResoure<T extends Flows, K extends keyof T = keyof T> = {
 type InternalMessageDownData = {
   Subscribed: {
     responseTo: string;
-    initialData: any;
+    initial: any;
+  };
+  SubscribeError: {
+    responseTo: string;
+    error: any;
   };
   Unsubscribed: {
     responseTo: string;
   };
   UnsubscribedByServer: {
+    responseTo: string | null;
     event: string;
     query: QueryObj | null;
   };
-  Mutation: {
+  Message: {
     event: string;
     query: QueryObj | null;
-    mutation: any;
-  };
-  Error: {
-    responseTo: string;
-    error: any;
+    message: any;
   };
 };
 
 export const ALL_MESSAGE_DOWN_TYPES: { [K in keyof InternalMessageDownData]: null } = {
-  Error: null,
-  Mutation: null,
+  SubscribeError: null,
+  Message: null,
   Subscribed: null,
   Unsubscribed: null,
   UnsubscribedByServer: null

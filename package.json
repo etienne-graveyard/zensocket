@@ -18,8 +18,8 @@
   },
   "dependencies": {
     "cuid": "^2.1.8",
-    "immer": "^6.0.3",
-    "suub": "^2.0.3"
+    "immer": "^6.0.5",
+    "suub": "^2.1.0"
   },
   "devDependencies": {
     "@types/jest": "^25.2.1",

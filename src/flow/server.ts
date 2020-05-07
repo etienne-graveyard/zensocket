@@ -3,41 +3,49 @@ import {
   Flows,
   InternalMessageUp,
   InternalMessageDown,
-  HandleSubscribe,
+  FlowServerMountHandlers,
   ALL_MESSAGE_UP_TYPES,
   FLOW_PREFIX
 } from './types';
 import { queryToKeys } from './utils';
 import { expectNever, createDeepMap, DeepMap } from '../utils';
-import { Unsubscribe } from 'suub';
 
 export interface FlowServerOptions<T extends Flows, Context> {
+  zenid: string;
   context: Context;
   outgoing(message: any): void;
-  zenid: string;
-  handleSubscribe: HandleSubscribe<T, Context>;
+  mountHandlers: FlowServerMountHandlers<T, Context>;
 }
+
+type InternalState =
+  | {
+      status: 'mounting';
+      cancel: () => void;
+      messageId: string;
+    }
+  | {
+      status: 'mounted';
+      unmount: () => void;
+      getInitial: () => any;
+    };
 
 export function createFlowServer<T extends Flows, Context>(
   options: FlowServerOptions<T, Context>
 ): FlowServer<T> {
-  const { outgoing, handleSubscribe, context } = options;
+  const { outgoing, mountHandlers, context } = options;
   const zenid = FLOW_PREFIX + options.zenid;
 
-  const internal: DeepMap<keyof T, Unsubscribe> = createDeepMap();
+  const internal: DeepMap<keyof T, InternalState> = createDeepMap();
 
   return {
     incoming,
     destroy,
-    flows: {
-      unsubscribe
-    }
+    unmount
   };
 
   function destroy(): void {
-    // unsub all
-    internal.forEach((_group, _keys, value) => {
-      value();
+    internal.forEach((event, keys) => {
+      unmount(event, keys);
     });
   }
 
@@ -47,42 +55,177 @@ export function createFlowServer<T extends Flows, Context>(
     }
   }
 
-  function dispatch<K extends keyof T>(
+  function emitMessage<K extends keyof T>(
     event: K,
     query: T[K]['query'],
-    mutation: T[K]['mutations']
+    message: T[K]['message']
   ): void {
     const keys = queryToKeys(query);
-    const isSubscribed = internal.get(event, keys);
-    if (!isSubscribed) {
+    const state = internal.get(event, keys);
+    if (!state) {
+      return;
+    }
+    if (state.status === 'mounting') {
+      console.warn(`emitMessage while mounting ??`);
       return;
     }
     const mes: InternalMessageDown = {
       zenid,
-      type: 'Mutation',
+      type: 'Message',
       event: event as any,
       query,
-      mutation
+      message
     };
     outgoing(mes);
   }
 
-  function unsubscribe<K extends keyof T>(event: K, query: T[K]['query']): void {
+  function unmount<K extends keyof T>(event: K, query: T[K]['query']): void {
     const keys = queryToKeys(query);
-    const unsubscribe = internal.get(event, keys);
-    if (!unsubscribe) {
+    const state = internal.get(event, keys);
+    if (!state) {
       return;
     }
-    unsubscribe();
-    internal.delete(event, keys);
-    const mes: InternalMessageDown = {
-      zenid,
-      type: 'UnsubscribedByServer',
-      event: event as string,
-      query
-    };
-    outgoing(mes);
-    return;
+    if (state.status === 'mounted') {
+      state.unmount();
+      internal.delete(event, keys);
+      const mes: InternalMessageDown = {
+        zenid,
+        type: 'UnsubscribedByServer',
+        event: event as string,
+        query,
+        responseTo: null
+      };
+      outgoing(mes);
+      return;
+    }
+    if (state.status === 'mounting') {
+      state.cancel();
+      internal.delete(event, keys);
+      const mes: InternalMessageDown = {
+        zenid,
+        type: 'UnsubscribedByServer',
+        event: event as string,
+        query,
+        responseTo: state.messageId
+      };
+      outgoing(mes);
+      return;
+    }
+    throw new Error('Unhandled');
+  }
+
+  async function safeRun<T>(
+    exec: () => Promise<T>
+  ): Promise<{ type: 'result'; value: T } | { type: 'error'; error: any }> {
+    try {
+      const res = await exec();
+      return {
+        type: 'result',
+        value: res
+      };
+    } catch (error) {
+      return {
+        type: 'error',
+        error
+      };
+    }
+  }
+
+  async function handleUpMessage(message: InternalMessageUp): Promise<void> {
+    const keys = queryToKeys(message.query);
+    if (message.type === 'Subscribe') {
+      const state = internal.get(message.event, keys);
+      if (state) {
+        return;
+      }
+      let canceled = false;
+      const onSub = mountHandlers[message.event];
+      if (!onSub) {
+        throw new Error('Missing on sub');
+      }
+      internal.set(message.event, keys, {
+        status: 'mounting',
+        messageId: message.id,
+        cancel: () => {
+          canceled = true;
+        }
+      });
+      const res = await safeRun(() =>
+        onSub({
+          query: message.query,
+          context,
+          emitMessage: message => emitMessage(message.event, message.query, message)
+        })
+      );
+      if (canceled) {
+        return;
+      }
+      if (res.type === 'error') {
+        internal.delete(message.event, keys);
+        const mes: InternalMessageDown = {
+          zenid,
+          type: 'SubscribeError',
+          error: String(res.error),
+          responseTo: message.id
+        };
+        outgoing(mes);
+        return;
+      }
+      // no error
+      const { getInitial, unmount } = res.value;
+      internal.set(message.event, keys, {
+        status: 'mounted',
+        unmount,
+        getInitial
+      });
+      const mes: InternalMessageDown = {
+        zenid,
+        type: 'Subscribed',
+        initial: getInitial(),
+        responseTo: message.id
+      };
+      outgoing(mes);
+      return;
+    }
+    if (message.type === 'Unsubscribe') {
+      const keys = queryToKeys(message.query);
+      const state = internal.get(message.event, keys);
+      if (!state) {
+        return;
+      }
+      if (state.status === 'mounting') {
+        state.cancel();
+        internal.delete(message.event, keys);
+        // fisrt respond to Subscribe with an Unsubscribed
+        const subResponse: InternalMessageDown = {
+          zenid,
+          type: 'Unsubscribed',
+          responseTo: state.messageId
+        };
+        outgoing(subResponse);
+        // then respond to Unsubscribe with an 'Unsubscribed'
+        const mes: InternalMessageDown = {
+          zenid,
+          type: 'Unsubscribed',
+          responseTo: message.id
+        };
+        outgoing(mes);
+        return;
+      }
+      if (state.status === 'mounted') {
+        state.unmount();
+        internal.delete(message.event, keys);
+        const mes: InternalMessageDown = {
+          zenid,
+          type: 'Unsubscribed',
+          responseTo: message.id
+        };
+        outgoing(mes);
+        return;
+      }
+      throw new Error('Unhandled case');
+    }
+    expectNever(message);
   }
 
   function isUpMessage(message: any): message is InternalMessageUp {
@@ -100,64 +243,5 @@ export function createFlowServer<T extends Flows, Context>(
       }
     }
     return false;
-  }
-
-  async function handleUpMessage(message: InternalMessageUp): Promise<void> {
-    const keys = queryToKeys(message.query);
-    if (message.type === 'Subscribe') {
-      const isSubscribed = internal.get(message.event, keys);
-      if (isSubscribed) {
-        return;
-      }
-      try {
-        const onSub:
-          | HandleSubscribe<T, Context>[keyof HandleSubscribe<T, Context>]
-          | undefined = (handleSubscribe as any)[message.event];
-        if (!onSub) {
-          throw new Error('Missing on sub');
-        }
-        const { state, unsubscribe } = await onSub({
-          query: message.query,
-          context,
-          dispatch: mutation => dispatch(message.event, message.query, mutation)
-        });
-        internal.set(message.event, keys, unsubscribe);
-        const mes: InternalMessageDown = {
-          zenid,
-          type: 'Subscribed',
-          initialData: state,
-          responseTo: message.id
-        };
-        outgoing(mes);
-        return;
-      } catch (error) {
-        internal.delete(message.event, keys);
-        const mes: InternalMessageDown = {
-          zenid,
-          type: 'Error',
-          error: String(error),
-          responseTo: message.id
-        };
-        outgoing(mes);
-        return;
-      }
-    }
-    if (message.type === 'Unsubscribe') {
-      const keys = queryToKeys(message.query);
-      const unsubscribe = internal.get(message.event, keys);
-      if (!unsubscribe) {
-        return;
-      }
-      unsubscribe();
-      internal.delete(message.event, keys);
-      const rep: InternalMessageDown = {
-        zenid,
-        type: 'Unsubscribed',
-        responseTo: message.id
-      };
-      outgoing(rep);
-      return;
-    }
-    expectNever(message);
   }
 }

@@ -1,18 +1,17 @@
-import { Unsubscribe } from 'suub';
+import { Unsubscribe, Subscription } from 'suub';
 import {
   FlowClient,
-  FlowStatus,
   Flows,
-  FlowState,
   QueryObj,
   InternalMessageUp,
   InternalMessageDown,
   InternalMessageUpType,
   ALL_MESSAGE_DOWN_TYPES,
   FLOW_PREFIX,
-  FlowRef,
-  HandleMutation,
-  FlowClientState
+  FlowClientMountHandlers,
+  FlowClientState,
+  FlowConnectionStatus,
+  FlowClientMountResponse
 } from './types';
 import cuid from 'cuid';
 import { queryToKeys } from './utils';
@@ -22,52 +21,91 @@ import { Outgoing } from '../types';
 export interface FlowClientOptions<T extends Flows> {
   zenid: string;
   unsubscribeDelay?: number | false;
-  handleMutations: HandleMutation<T>;
+  mountHandlers: FlowClientMountHandlers<T>;
 }
 
-interface SubRequestsState {
+type InternalStateState =
+  | {
+      type: 'Void';
+    }
+  | {
+      type: 'Deleted';
+    }
+  | {
+      type: 'Subscribing';
+      messageId: string;
+    }
+  | {
+      type: 'Subscribed';
+      store: FlowClientMountResponse<any, any>;
+    }
+  | {
+      type: 'Offline';
+      store: FlowClientMountResponse<any, any>;
+    }
+  | {
+      type: 'Resubscribing';
+      store: FlowClientMountResponse<any, any>;
+      messageId: string;
+    }
+  | {
+      type: 'Unsubscribing';
+      store: FlowClientMountResponse<any, any>;
+      messageId: string;
+    }
+  | {
+      type: 'CancelSubscribing';
+      messageId: string;
+    }
+  | {
+      type: 'Error';
+      error: any;
+      store: FlowClientMountResponse<any, any> | null;
+    }
+  | {
+      type: 'UnsubscribedByServer';
+      store: FlowClientMountResponse<any, any> | null;
+    };
+
+interface InternalState {
+  event: string;
   query: QueryObj | null;
-  subs: Set<Unsubscribe>;
+  keys: Array<any>;
+  sub: Subscription<FlowClientState<any>>;
+  status: InternalStateState;
 }
+
+type Connection =
+  | {
+      status: 'Void';
+    }
+  | {
+      status: 'Connected';
+      outgoing: Outgoing;
+    }
+  | {
+      status: 'Offline';
+    };
 
 export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>): FlowClient<T> {
-  const { unsubscribeDelay = false, handleMutations } = options;
+  const { unsubscribeDelay = false, mountHandlers } = options;
   const zenid = FLOW_PREFIX + options.zenid;
 
-  const VOID_FLOW_STATE: FlowState<any> = { status: FlowStatus.Void };
-
-  let outgoing: Outgoing | null = null;
-
-  // keep the state
-  const internal: DeepMap<keyof T, FlowState<any>> = createDeepMap({
-    immutable: true
-  });
-  // keep the requested state
-  const subRequests: DeepMap<keyof T, SubRequestsState> = createDeepMap();
-
-  const emptyState: FlowState<any> = {
-    status: FlowStatus.Void
-  };
-
-  let latestInternal = internal.getState();
-  let latestState: FlowClientState<T> = {
-    data: internal as any,
-    get: getItemState,
-    getVoid: getItemVoidState
-  };
-
+  const connectionStatusSub = Subscription.create<FlowConnectionStatus>();
+  const internal: DeepMap<keyof T, InternalState> = createDeepMap();
   const sentMessages: Map<string, InternalMessageUp> = new Map();
+
+  let connection: Connection = { status: 'Void' };
 
   return {
     incoming,
     disconnected,
     connected,
     destroy,
-    getState,
-    subscribe: internal.subscribe,
-    flows: {
-      subscribe,
-      ref
+    subscribe,
+    connectionStatus: {
+      get: () => connection.status,
+      subscribe: connectionStatusSub.subscribe
     }
   };
 
@@ -75,314 +113,601 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     console.warn(`Destroy: Should we do something here ?`);
   }
 
-  function getState(): FlowClientState<T> {
-    const intern = internal.getState();
-    if (intern !== latestInternal) {
-      latestInternal = intern;
-      latestState = {
-        data: latestInternal,
-        get: getItemState,
-        getVoid: getItemVoidState
-      };
-    }
-    return latestState;
-  }
+  // function getState<K extends keyof T>(event: K, query: QueryObj | null = null): FlowState {
+  //   const keys = queryToKeys(query);
+  //   const intern = getInternalState(event, keys);
+  //   if (intern === null) {
+  //     return emptyState;
+  //   }
+  //   return intern;
+  // }
 
-  function ref<K extends keyof T>(event: K, query: QueryObj | null = null): FlowRef<T, K> {
-    return {
-      event: event as any,
-      query,
-      is: n => n === event
-    };
-  }
+  // function getRef<K extends keyof T>(event: K, query: QueryObj | null = null): FlowRef<T, K> {
+  //   return {
+  //     event: event as any,
+  //     query,
+  //     is: n => n === event
+  //   };
+  // }
 
   function disconnected(): void {
-    outgoing = null;
-    // change states
-    internal.updateEach((_group, _keys, state) => {
-      if (state.status === FlowStatus.Offline || state.status === FlowStatus.Void) {
-        return state;
-      }
-      if (state.status === FlowStatus.Resubscribing || state.status === FlowStatus.Subscribed) {
-        return {
-          status: FlowStatus.Offline,
-          data: state.data
-        };
-      }
-      if (state.status === FlowStatus.Unsubscribing) {
-        return { status: FlowStatus.Void };
-      }
-      console.warn('Unhandled state on disconnected', state);
-      return state;
+    if (connection.status === 'Offline') {
+      return;
+    }
+    connection = {
+      status: 'Offline'
+    };
+    connectionStatusSub.call(connection.status);
+    internal.forEach((_event, _keys, state) => {
+      update(state);
     });
   }
 
   function connected(out: (msg: any) => void): void {
-    outgoing = out;
-    // sub what need to be
-    subRequests.forEach((event, keys, state) => {
-      if (state.subs.size > 0) {
-        setTimeout(() => {
-          // force sub on connect
-          update(event, keys, state.query);
-        });
-      }
+    if (connection.status === 'Connected') {
+      return;
+    }
+    connection = {
+      status: 'Connected',
+      outgoing: out
+    };
+    connectionStatusSub.call(connection.status);
+    internal.forEach((_event, _keys, state) => {
+      update(state);
     });
   }
 
-  function subscribe<K extends keyof T>(event: K, query: QueryObj | null = null): Unsubscribe {
-    const keys = queryToKeys(query);
-    const sub = ensureSubRequest(event, keys, query);
-    const unsub = () => {
-      const sub = subRequests.get(event, keys);
-      if (sub) {
-        if (unsubscribeDelay) {
-          setTimeout(() => {
-            sub.subs.delete(unsub);
-            update(event, keys, query);
-          }, unsubscribeDelay);
-        } else {
-          sub.subs.delete(unsub);
-          setTimeout(() => {
-            update(event, keys, query);
-          });
-        }
+  function subscribe<K extends keyof T>(
+    event: K,
+    query: T[K]['query'],
+    onState: (state: FlowClientState<T[K]['state']>) => void
+  ): Unsubscribe {
+    const state = ensureInternalState(event, queryToKeys(query), query);
+    return state.sub.subscribe(onState);
+  }
+
+  function update(state: InternalState): void {
+    if (state.sub.listenersCount() === 0) {
+      ensureUnsubscribed(state);
+      return;
+    }
+    ensureSubscribed(state);
+  }
+
+  function ensureSubscribed(state: InternalState): void {
+    if (connection.status === 'Void') {
+      if (state.status.type === 'Void') {
+        return;
       }
+      // this should not happen
+      throw new Error(`Unexpected status with Void connection`);
+    }
+    if (connection.status === 'Connected') {
+      return ensureSubscribedConnected(state);
+    }
+    if (connection.status === 'Offline') {
+      return ensureSubscribedOffline(state);
+    }
+    expectNever(connection);
+    return;
+  }
+
+  function ensureSubscribedConnected(state: InternalState): void {
+    if (
+      state.status.type === 'Subscribed' ||
+      state.status.type === 'Subscribing' ||
+      state.status.type === 'Resubscribing' ||
+      state.status.type === 'Error' ||
+      state.status.type === 'UnsubscribedByServer' ||
+      state.status.type === 'Deleted'
+    ) {
+      return;
+    }
+    if (state.status.type === 'Void') {
+      // sub
+      const messageId = sendSubscribeMessage(state.event, state.query);
+      state.status = {
+        type: 'Subscribing',
+        messageId: messageId
+      };
+      return;
+    }
+    if (state.status.type === 'Offline') {
+      // reconnect
+      const messageId = sendSubscribeMessage(state.event, state.query);
+      state.status = {
+        type: 'Resubscribing',
+        messageId: messageId,
+        store: state.status.store
+      };
+      return;
+    }
+    if (state.status.type === 'CancelSubscribing') {
+      popSentMessage(state.status.messageId, 'Unsubscribe');
+      const messageId = sendSubscribeMessage(state.event, state.query);
+      state.status = {
+        type: 'Subscribing',
+        messageId: messageId
+      };
+      return;
+    }
+    if (state.status.type === 'Unsubscribing') {
+      popSentMessage(state.status.messageId, 'Unsubscribe');
+      const messageId = sendSubscribeMessage(state.event, state.query);
+      state.status = {
+        type: 'Resubscribing',
+        messageId: messageId,
+        store: state.status.store
+      };
+      return;
+    }
+    expectNever(state.status);
+    return;
+  }
+
+  function ensureSubscribedOffline(state: InternalState): void {
+    if (
+      state.status.type === 'Void' ||
+      state.status.type === 'UnsubscribedByServer' ||
+      state.status.type === 'Deleted' ||
+      state.status.type === 'Error' ||
+      state.status.type === 'Offline'
+    ) {
+      return;
+    }
+    if (state.status.type === 'Subscribing') {
+      // cancel sub
+      popSentMessage(state.status.messageId, 'Subscribe');
+      state.status = {
+        type: 'Void'
+      };
+      return;
+    }
+    if (state.status.type === 'Resubscribing') {
+      // cancel sub
+      popSentMessage(state.status.messageId, 'Subscribe');
+      state.status = {
+        type: 'Offline',
+        store: state.status.store
+      };
+      return;
+    }
+    if (state.status.type === 'Subscribed') {
+      state.status = {
+        type: 'Offline',
+        store: state.status.store
+      };
+      return;
+    }
+    if (state.status.type === 'CancelSubscribing' || state.status.type === 'Unsubscribing') {
+      popSentMessage(state.status.messageId, 'Unsubscribe');
+      deleteState(state);
+      return;
+    }
+    expectNever(state.status);
+    return;
+  }
+
+  function ensureUnsubscribed(state: InternalState): void {
+    if (connection.status === 'Void') {
+      if (state.status.type === 'Void') {
+        return;
+      }
+      // this should not happen
+      throw new Error(`Unexpected status with Void connection`);
+    }
+    if (connection.status === 'Offline') {
+      return ensureUnsubscribedOffline(state);
+    }
+    if (connection.status === 'Connected') {
+      return ensureUnsubscribedConnected(state);
+    }
+    expectNever(connection);
+  }
+
+  function ensureUnsubscribedOffline(state: InternalState): void {
+    if (
+      state.status.type === 'Void' ||
+      state.status.type === 'Offline' ||
+      state.status.type === 'Deleted' ||
+      state.status.type === 'Subscribed' ||
+      state.status.type === 'UnsubscribedByServer' ||
+      state.status.type === 'Error'
+    ) {
+      deleteState(state);
+      return;
+    }
+    if (
+      state.status.type === 'Subscribing' ||
+      state.status.type === 'Resubscribing' ||
+      state.status.type === 'CancelSubscribing' ||
+      state.status.type === 'Unsubscribing'
+    ) {
+      popSentMessage(state.status.messageId, 'Subscribe');
+      deleteState(state);
+      return;
+    }
+    expectNever(state.status);
+    return;
+  }
+
+  function ensureUnsubscribedConnected(state: InternalState): void {
+    if (state.status.type === 'Unsubscribing' || state.status.type === 'CancelSubscribing') {
+      return;
+    }
+    if (
+      state.status.type === 'Offline' ||
+      state.status.type === 'UnsubscribedByServer' ||
+      state.status.type === 'Deleted' ||
+      state.status.type === 'Error'
+    ) {
+      deleteState(state);
+      return;
+    }
+    if (state.status.type === 'Resubscribing') {
+      popSentMessage(state.status.messageId, 'Subscribe');
+      const messageId = sendUnsubscribeMessage(state.event, state.query);
+      state.status = {
+        type: 'Unsubscribing',
+        store: state.status.store,
+        messageId
+      };
+      return;
+    }
+    if (state.status.type === 'Subscribing') {
+      popSentMessage(state.status.messageId, 'Subscribe');
+      const messageId = sendUnsubscribeMessage(state.event, state.query);
+      state.status ==
+        {
+          type: 'CancelSubscribing',
+          messageId
+        };
+      return;
+    }
+    if (state.status.type === 'Subscribed') {
+      const messageId = sendUnsubscribeMessage(state.event, state.query);
+      state.status = {
+        type: 'Unsubscribing',
+        store: state.status.store,
+        messageId
+      };
+      return;
+    }
+    if (state.status.type === 'Void') {
+      deleteState(state);
+      return;
+    }
+    expectNever(state.status);
+    return;
+  }
+
+  function deleteState(state: InternalState) {
+    if (state.status.type === 'Deleted') {
+      return;
+    }
+    if (state.status.type === 'Error' || state.status.type === 'UnsubscribedByServer') {
+      if (state.status.store) {
+        state.status.store.unmount();
+      }
+    } else if (
+      state.status.type === 'Offline' ||
+      state.status.type === 'Resubscribing' ||
+      state.status.type === 'Subscribed' ||
+      state.status.type === 'Unsubscribing'
+    ) {
+      state.status.store.unmount();
+    } else if (
+      state.status.type === 'CancelSubscribing' ||
+      state.status.type === 'Subscribing' ||
+      state.status.type === 'Void'
+    ) {
+      // No store => do nothing
+    } else {
+      expectNever(state.status);
+    }
+    state.status = {
+      type: 'Deleted'
     };
-    sub.subs.add(unsub);
-    setTimeout(() => {
-      update(event, keys, query);
+    internal.delete(state.event, state.keys);
+  }
+
+  function sendMessage(message: InternalMessageUp) {
+    if (connection.status === 'Connected') {
+      connection.outgoing(message);
+      sentMessages.set(message.id, message);
+    }
+    throw new Error(`Cannot send a message when not connected !`);
+  }
+
+  function sendSubscribeMessage(event: keyof T, query: QueryObj | null): string {
+    const messageId = cuid.slug();
+    sendMessage({
+      zenid,
+      type: 'Subscribe',
+      id: messageId,
+      event: event as any,
+      query
     });
-    return unsub;
+    return messageId;
   }
 
-  function ensureSubRequest<K extends keyof T>(
-    event: K,
-    keys: Array<any>,
-    query: QueryObj | null
-  ): SubRequestsState {
-    const sub = subRequests.get(event, keys);
-    if (sub) {
-      return sub;
-    }
-    const created: SubRequestsState = {
-      query,
-      subs: new Set<Unsubscribe>()
-    };
-    subRequests.set(event, keys, created);
-    return created;
+  function sendUnsubscribeMessage(event: keyof T, query: QueryObj | null): string {
+    const messageId = cuid.slug();
+    sendMessage({
+      zenid,
+      type: 'Unsubscribe',
+      id: messageId,
+      event: event as any,
+      query
+    });
+    return messageId;
   }
 
-  function update<K extends keyof T>(event: K, keys: Array<any>, query: QueryObj | null): void {
-    const sub = subRequests.get(event, keys);
-    if (!sub || sub.subs.size === 0) {
-      if (sub && sub.subs.size === 0) {
-        subRequests.delete(event, keys);
-      }
-      ensureUnsubscribed(event, keys, query);
-      return;
-    }
-    ensureSubscribed(event, keys, query);
-  }
+  // function ensureSubRequest<K extends keyof T>(
+  //   event: K,
+  //   keys: Array<any>,
+  //   query: QueryObj | null
+  // ): SubRequestsState {
+  //   const sub = subRequests.get(event, keys);
+  //   if (sub) {
+  //     return sub;
+  //   }
+  //   const created: SubRequestsState = {
+  //     query,
+  //     subs: new Set<Unsubscribe>()
+  //   };
+  //   subRequests.set(event, keys, created);
+  //   return created;
+  // }
 
-  function ensureSubscribed<K extends keyof T>(
-    event: K,
-    keys: Array<any>,
-    query: QueryObj | null
-  ): void {
-    if (outgoing === null) {
+  function emitState(internalState: InternalState, nextState: any): void {
+    if (
+      internalState.status.type === 'Offline' ||
+      internalState.status.type === 'Resubscribing' ||
+      internalState.status.type === 'Unsubscribing' ||
+      internalState.status.type === 'Subscribed'
+    ) {
+      internalState.sub.call({ resolved: true, state: nextState });
       return;
     }
-    const intern = ensureInternalState(event, keys);
-    if (intern.status === FlowStatus.Subscribed) {
-      return;
+    if (
+      internalState.status.type === 'Subscribing' ||
+      internalState.status.type === 'Void' ||
+      internalState.status.type === 'CancelSubscribing' ||
+      internalState.status.type === 'Deleted' ||
+      internalState.status.type === 'Error' ||
+      internalState.status.type === 'UnsubscribedByServer'
+    ) {
+      throw new Error(`Emit state in invalid state`);
     }
-    if (intern.status === FlowStatus.Subscribing) {
-      return;
-    }
-    if (intern.status === FlowStatus.Resubscribing) {
-      return;
-    }
-    // if Unsubscribing cancel the unsubscription
-    if (intern.status === FlowStatus.Unsubscribing) {
-      const out = getSentMessage(intern.messageId, 'Unsubscribe');
-      if (out) {
-        sentMessages.delete(intern.messageId);
-      }
-    }
-    if (intern.status === FlowStatus.Void) {
-      const message: InternalMessageUp = {
-        zenid,
-        type: 'Subscribe',
-        id: cuid.slug(),
-        event: event as string,
-        query
-      };
-      sentMessages.set(message.id, message);
-      setInternalState(event, keys, {
-        status: FlowStatus.Subscribing,
-        messageId: message.id
-      });
-      outgoing(message);
-      return;
-    }
-    if (intern.status === FlowStatus.Offline) {
-      const message: InternalMessageUp = {
-        zenid,
-        type: 'Subscribe',
-        id: cuid.slug(),
-        event: event as string,
-        query
-      };
-      sentMessages.set(message.id, message);
-      setInternalState(event, keys, {
-        status: FlowStatus.Resubscribing,
-        data: intern.data,
-        messageId: message.id
-      });
-      outgoing(message);
-      return;
-    }
-    console.warn('Unhandled state', intern);
-  }
-
-  function ensureUnsubscribed<K extends keyof T>(
-    event: K,
-    keys: Array<any>,
-    query: QueryObj | null
-  ): void {
-    if (outgoing === null) {
-      return;
-    }
-    const intern = getInternalState(event, keys);
-    if (intern === null) {
-      return;
-    }
-    // is Subscribing => cancel
-    if (intern.status === FlowStatus.Subscribing) {
-      const out = getSentMessage(intern.messageId, 'Subscribe');
-      if (out) {
-        sentMessages.delete(intern.messageId);
-      }
-    }
-    if (intern.status === FlowStatus.Subscribed) {
-      const message: InternalMessageUp = {
-        zenid,
-        type: 'Unsubscribe',
-        id: cuid.slug(),
-        event: event as string,
-        query
-      };
-      sentMessages.set(message.id, message);
-      setInternalState(event, keys, {
-        status: FlowStatus.Unsubscribing,
-        messageId: message.id
-      });
-      outgoing(message);
-      return;
-    }
+    expectNever(internalState.status);
   }
 
   function handleDownMessage(message: InternalMessageDown): void {
-    if (message.type === 'Subscribed') {
-      const out = getSentMessage(message.responseTo, 'Subscribe');
+    return stateFromMessageDown(message, state => {
+      if (message.type === 'Subscribed') {
+        if (state.status.type === 'Subscribing' || state.status.type === 'Resubscribing') {
+          const mount = mountHandlers[state.event];
+          if (!mount) {
+            throw new Error(`Missing mutation handler for ${state.event}`);
+          }
+          if (state.status.type === 'Resubscribing') {
+            // unmount => remount
+            state.status.store.unmount();
+          }
+          const store = mount({
+            emitState: nextState => emitState(state, nextState),
+            initial: message.initial,
+            query: state.query
+          });
+          state.status = {
+            type: 'Subscribed',
+            store
+          };
+          return;
+        }
+        if (
+          state.status.type === 'Subscribed' ||
+          state.status.type === 'Void' ||
+          state.status.type === 'Offline' ||
+          state.status.type === 'CancelSubscribing' ||
+          state.status.type === 'Deleted' ||
+          state.status.type === 'Unsubscribing' ||
+          state.status.type === 'Error' ||
+          state.status.type === 'UnsubscribedByServer'
+        ) {
+          throw new Error(`Unexpected state`);
+        }
+        expectNever(state.status);
+        return;
+      }
+      if (message.type === 'SubscribeError') {
+        return handleSubscribeError(state, message.error);
+      }
+      if (message.type === 'Unsubscribed') {
+        if (state.status.type === 'CancelSubscribing' || state.status.type === 'Unsubscribing') {
+          deleteState(state);
+          return;
+        }
+        if (
+          state.status.type === 'Offline' ||
+          state.status.type === 'Resubscribing' ||
+          state.status.type === 'Void' ||
+          state.status.type === 'Subscribed' ||
+          state.status.type === 'Subscribing' ||
+          state.status.type === 'Deleted' ||
+          state.status.type === 'Error' ||
+          state.status.type === 'UnsubscribedByServer'
+        ) {
+          throw new Error(
+            `Unexpected state on Unsubscribed message. Message should have been canceled`
+          );
+        }
+        expectNever(state.status);
+        return;
+      }
+      if (message.type === 'Message') {
+        if (
+          state.status.type === 'Offline' ||
+          state.status.type === 'Resubscribing' ||
+          state.status.type === 'Subscribed' ||
+          state.status.type === 'Unsubscribing'
+        ) {
+          state.status.store.onMessage(message.message);
+          return;
+        }
+        if (
+          state.status.type === 'CancelSubscribing' ||
+          state.status.type === 'Subscribing' ||
+          state.status.type === 'Void' ||
+          state.status.type === 'Deleted' ||
+          state.status.type === 'UnsubscribedByServer' ||
+          state.status.type === 'Error'
+        ) {
+          throw new Error(`Unexpected state on Message.`);
+        }
+        expectNever(state.status);
+        return;
+      }
+      if (message.type === 'UnsubscribedByServer') {
+        if (
+          state.status.type === 'CancelSubscribing' ||
+          state.status.type === 'Unsubscribing' ||
+          state.status.type === 'Void'
+        ) {
+          deleteState(state);
+          return;
+        }
+        if (
+          state.status.type === 'Offline' ||
+          state.status.type === 'Resubscribing' ||
+          state.status.type === 'Subscribed'
+        ) {
+          state.status = {
+            type: 'UnsubscribedByServer',
+            store: state.status.store
+          };
+          return;
+        }
+        if (state.status.type === 'Subscribing') {
+          state.status = {
+            type: 'UnsubscribedByServer',
+            store: null
+          };
+          return;
+        }
+        if (
+          state.status.type === 'Deleted' ||
+          state.status.type === 'Error' ||
+          state.status.type === 'UnsubscribedByServer'
+        ) {
+          throw new Error(
+            `Unexpected state on Unsubscribed message. Message should have been canceled`
+          );
+        }
+        expectNever(state.status);
+        return;
+      }
+      expectNever(message);
+    });
+  }
+
+  function messageUpFromMessageDown(
+    message: InternalMessageDown,
+    withUp: (message: InternalMessageUp | null) => void
+  ): void {
+    if (message.type === 'Subscribed' || message.type === 'SubscribeError') {
+      const out = popSentMessage(message.responseTo, 'Subscribe');
       if (!out) {
-        // canceled
-        return;
+        return; // canceled
       }
-      const keys = queryToKeys(out.query);
-      const state = getInternalState(out.event, keys);
-      if (!state) {
-        return;
-      }
-      if (state.status === FlowStatus.Subscribing || state.status === FlowStatus.Resubscribing) {
-        setInternalState(out.event, keys, {
-          status: FlowStatus.Subscribed,
-          data: message.initialData
-        });
-      }
-      return;
+      return withUp(out);
     }
     if (message.type === 'Unsubscribed') {
-      const out = getSentMessage(message.responseTo, 'Unsubscribe');
+      const out = popSentMessage(message.responseTo, 'Subscribe');
       if (!out) {
-        // canceled
-        return;
+        return; // canceled
       }
-      const keys = queryToKeys(out.query);
-      const state = getInternalState(out.event, keys);
-      if (!state || state.status !== FlowStatus.Unsubscribing) {
-        return;
-      }
-      setInternalState(out.event, keys, { status: FlowStatus.Void });
-      return;
-    }
-    if (message.type === 'Error') {
-      const out = sentMessages.get(message.responseTo);
-      if (!out) {
-        // canceled
-        return;
-      }
-      const keys = queryToKeys(out.query);
-      if (out.type === 'Subscribe') {
-        const state = getInternalState(out.event, keys);
-        if (!state || state.status !== FlowStatus.Subscribing) {
-          return;
-        }
-        setInternalState(out.event, keys, {
-          status: FlowStatus.Error,
-          errorType: 'Subscribing',
-          error: message.error
-        });
-        return;
-      }
-      if (out.type === 'Unsubscribe') {
-        const state = getInternalState(out.event, keys);
-        if (!state || state.status !== FlowStatus.Unsubscribing) {
-          return;
-        }
-        setInternalState(out.event, keys, {
-          status: FlowStatus.Error,
-          errorType: 'Unsubscribing',
-          error: message.error
-        });
-        return;
-      }
-      return;
-    }
-    if (message.type === 'Mutation') {
-      const keys = queryToKeys(message.query);
-      const state = getInternalState(message.event, keys);
-      if (!state || state.status !== FlowStatus.Subscribed) {
-        return;
-      }
-      const hanlder = handleMutations[message.event];
-      if (!hanlder) {
-        throw new Error(`Missing mutation handler for ${message.event}`);
-      }
-      const prevState = state.data;
-      const nextState = hanlder(prevState, message.mutation);
-      if (prevState !== nextState) {
-        setInternalState(message.event, keys, {
-          status: FlowStatus.Subscribed,
-          data: nextState
-        });
-      }
-      return;
+      return withUp(out);
     }
     if (message.type === 'UnsubscribedByServer') {
-      const keys = queryToKeys(message.query);
-      const state = getInternalState(message.event, keys);
-      if (!state) {
-        return;
+      if (message.responseTo === null) {
+        return withUp(null);
       }
-      internal.delete(message.event, keys);
-      return;
+      const out = popSentMessage(message.responseTo, 'Subscribe');
+      if (!out) {
+        return; // canceled
+      }
+      return withUp(out);
+    }
+    if (message.type === 'Message') {
+      return withUp(null);
     }
     expectNever(message);
   }
 
-  function getSentMessage<K extends InternalMessageUpType>(
+  function stateFromMessageDown(
+    message: InternalMessageDown,
+    withState: (state: InternalState) => void
+  ): void {
+    if (message.type === 'Message') {
+      const keys = queryToKeys(message.query);
+      const state = getInternalState(message.event, keys);
+      if (!state) {
+        return;
+      }
+      return withState(state);
+    }
+    return messageUpFromMessageDown(message, upMessage => {
+      if (upMessage === null) {
+        if (message.type === 'UnsubscribedByServer') {
+          const keys = queryToKeys(message.query);
+          const state = getInternalState(message.event, keys);
+          if (!state) {
+            return;
+          }
+          return withState(state);
+        }
+        return;
+      }
+      const keys = queryToKeys(upMessage.query);
+      const state = getInternalState(upMessage.event, keys);
+      if (!state) {
+        return;
+      }
+      return withState(state);
+    });
+  }
+
+  function handleSubscribeError(state: InternalState, error: any) {
+    if (state.status.type === 'Subscribing' || state.status.type === 'Resubscribing') {
+      const store = state.status.type === 'Resubscribing' ? state.status.store : null;
+      state.status = {
+        type: 'Error',
+        store,
+        error
+      };
+      return;
+    }
+    if (
+      state.status.type === 'Deleted' ||
+      state.status.type === 'CancelSubscribing' ||
+      state.status.type === 'Error' ||
+      state.status.type === 'Offline' ||
+      state.status.type === 'Subscribed' ||
+      state.status.type === 'Unsubscribing' ||
+      state.status.type === 'Void' ||
+      state.status.type === 'UnsubscribedByServer'
+    ) {
+      throw new Error(
+        `Unexpected state on SubscribeError message. Message should have been canceled`
+      );
+    }
+    expectNever(state.status);
+    return;
+  }
+
+  function popSentMessage<K extends InternalMessageUpType>(
     id: string,
     expectedType: K
   ): InternalMessageUp<K> | null {
@@ -392,7 +717,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     }
     sentMessages.delete(id);
     if (out.type !== expectedType) {
-      return null;
+      throw new Error(`Invalid message type`);
     }
     return out as any;
   }
@@ -420,23 +745,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     return false;
   }
 
-  function getItemState<K extends keyof T>(
-    event: K,
-    query: QueryObj | null = null
-  ): FlowState<T[K]['initial']> {
-    const keys = queryToKeys(query);
-    const intern = getInternalState(event, keys);
-    if (intern === null) {
-      return emptyState;
-    }
-    return intern;
-  }
-
-  function getItemVoidState<K extends keyof T>(_event: K): FlowState<T[K]['initial']> {
-    return VOID_FLOW_STATE;
-  }
-
-  function getInternalState<K extends keyof T>(event: K, keys: Array<any>): FlowState<any> | null {
+  function getInternalState<K extends keyof T>(event: K, keys: Array<any>): InternalState | null {
     const eventState = internal.get(event, keys);
     if (!eventState) {
       return null;
@@ -444,20 +753,35 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     return eventState;
   }
 
-  function setInternalState<K extends keyof T>(
+  function ensureInternalState<K extends keyof T>(
     event: K,
     keys: Array<any>,
-    state: FlowState<any>
-  ): void {
-    internal.set(event, keys, state);
-  }
-
-  function ensureInternalState<K extends keyof T>(event: K, keys: Array<any>): FlowState<any> {
-    let eventState = internal.get(event, keys);
-    if (!eventState) {
-      eventState = emptyState;
-      internal.set(event, keys, eventState);
+    query: QueryObj | null
+  ): InternalState {
+    const currentState = internal.get(event, keys);
+    if (currentState) {
+      return currentState;
     }
-    return eventState;
+    const state: InternalState = {
+      event: event as any,
+      query,
+      keys,
+      status: {
+        type: 'Void'
+      },
+      sub: Subscription.create({
+        onFirstSubscription: () => {
+          update(state);
+        },
+        onLastUnsubscribe: () => {
+          // TODO: handle unsub delay !
+          console.log(`TODO: Handle unsubscribeDelay`);
+          console.log({ unsubscribeDelay });
+          update(state);
+        }
+      })
+    };
+    internal.set(event, keys, state);
+    return state;
   }
 }
