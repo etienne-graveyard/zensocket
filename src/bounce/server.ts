@@ -1,6 +1,6 @@
 import {
   Bounces,
-  HandleRequest,
+  BounceHandleRequest,
   BounceServer,
   InternalMessageUp,
   ALL_MESSAGE_UP_TYPES,
@@ -14,7 +14,7 @@ export interface BounceServerOptions<T extends Bounces, Context> {
   outgoing(message: any): void;
   zenid: string;
   context: Context;
-  handleRequest: HandleRequest<T, Context>;
+  handleRequest: BounceHandleRequest<T, Context>;
 }
 
 export function createBounceServer<T extends Bounces, Context>(

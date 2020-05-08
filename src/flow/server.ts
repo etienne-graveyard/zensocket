@@ -139,8 +139,8 @@ export function createFlowServer<T extends Flows, Context>(
         return;
       }
       let canceled = false;
-      const onSub = mountHandlers[message.event];
-      if (!onSub) {
+      const mount = mountHandlers[message.event];
+      if (!mount) {
         throw new Error('Missing on sub');
       }
       internal.set(message.event, keys, {
@@ -151,10 +151,10 @@ export function createFlowServer<T extends Flows, Context>(
         }
       });
       const res = await safeRun(() =>
-        onSub({
+        mount({
           query: message.query,
           context,
-          emitMessage: message => emitMessage(message.event, message.query, message)
+          emitMessage: mess => emitMessage(message.event, message.query, mess)
         })
       );
       if (canceled) {

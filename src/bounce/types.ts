@@ -13,21 +13,23 @@ export interface Bounce<Request, Response> {
 export type BounceAny = Bounce<any, any>;
 export type Bounces = { [key: string]: BounceAny };
 
-export interface HandleRequestData<Data, Context> {
+export interface BounceHandleRequestData<Data, Context> {
   data: Data;
   context: Context;
   canceled: () => Boolean;
 }
 
-export type HandleRequest<T extends Bounces, Context> = {
-  [K in keyof T]: (data: HandleRequestData<T[K]['request'], Context>) => Promise<T[K]['response']>;
+export type BounceHandleRequest<T extends Bounces, Context> = {
+  [K in keyof T]: (
+    data: BounceHandleRequestData<T[K]['request'], Context>
+  ) => Promise<T[K]['response']>;
 };
 
 export interface BounceRequestOptions {
   timeout?: number | null;
 }
 
-export type CancellableBounce<T extends BounceAny> = {
+export type BounceCancellable<T extends BounceAny> = {
   cancel: () => void;
   response: Promise<T['response']>;
 };
@@ -40,7 +42,7 @@ export interface BounceClient<T extends Bounces> extends ZensocketClient {
       event: K,
       data: T[K]['request'],
       options?: BounceRequestOptions
-    ): CancellableBounce<T[K]>;
+    ): BounceCancellable<T[K]>;
     request<K extends keyof T>(
       event: K,
       data: T[K]['request'],

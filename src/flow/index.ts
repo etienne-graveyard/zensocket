@@ -8,5 +8,11 @@ export {
   FlowServer,
   QueryObj,
   FlowClientMountHandlers,
-  FlowServerMountHandlers
+  FlowServerMountHandlers,
+  FlowClientMountParams,
+  FlowClientMountResponse,
+  FlowClientState,
+  FlowServerMountParams,
+  FlowServerMountResult,
+  FlowConnectionStatus
 } from './types';

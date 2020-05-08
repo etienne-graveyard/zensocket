@@ -4,7 +4,7 @@ import {
   Bounces,
   BounceClient,
   BounceRequestOptions,
-  CancellableBounce,
+  BounceCancellable,
   InternalMessageUp,
   BounceErrorType,
   BOUNCE_PREFIX
@@ -61,7 +61,7 @@ export function createBounceClient<T extends Bounces>(
     bounce: K,
     data: T[K]['request'],
     options: BounceRequestOptions = {}
-  ): CancellableBounce<T[K]> {
+  ): BounceCancellable<T[K]> {
     const { timeout = defaultTimeout } = options;
     const requestId = cuid.slug();
 

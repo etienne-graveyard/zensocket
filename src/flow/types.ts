@@ -58,6 +58,7 @@ export interface FlowClient<T extends Flows> extends ZensocketClient {
     query: T[K]['query'],
     onState: (state: FlowClientState<T[K]['state']>) => void
   ): Unsubscribe;
+  get<K extends keyof T>(event: K, query: T[K]['query']): FlowClientState<T[K]['state']>;
   connectionStatus: {
     get(): FlowConnectionStatus;
     subscribe: SubscribeMethod<FlowConnectionStatus>;
@@ -66,11 +67,20 @@ export interface FlowClient<T extends Flows> extends ZensocketClient {
 
 export type FlowConnectionStatus = 'Void' | 'Connected' | 'Offline';
 
-export type FlowClientState<State> = { resolved: false } | { resolved: true; state: State };
+export type FlowClientState<State> =
+  | { status: 'Void' }
+  | { status: 'Subscribing' }
+  | { status: 'Subscribed'; state: State }
+  | { status: 'Offline'; state: State }
+  | { status: 'Resubscribing'; state: State }
+  | { status: 'Unsubscribing'; state: State }
+  | { status: 'CancelSubscribing' }
+  | { status: 'Error'; error: any; state: State | null }
+  | { status: 'UnsubscribedByServer'; state: State | null };
 
-export interface FlowClientMountParams<Initial, Query, State> {
+export interface FlowClientMountParams<Initial, Query> {
   initial: Initial;
-  emitState: (state: State) => void;
+  stateChanged: () => void;
   query: Query;
 }
 
@@ -82,7 +92,7 @@ export interface FlowClientMountResponse<Message, State> {
 
 export type FlowClientMountHandlers<T extends Flows> = {
   [K in keyof T]: (
-    data: FlowClientMountParams<T[K]['initial'], T[K]['query'], T[K]['state']>
+    data: FlowClientMountParams<T[K]['initial'], T[K]['query']>
   ) => FlowClientMountResponse<T[K]['message'], T[K]['state']>;
 };
 
