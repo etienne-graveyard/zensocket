@@ -63,7 +63,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   const { unsubscribeDelay = false, mountHandlers } = options;
   const zenid = FLOW_PREFIX + options.zenid;
 
-  const connectionStatusSub = Subscription.create<FlowConnectionStatus>();
+  const connectionStatusSub = Subscription<FlowConnectionStatus>();
   const internal: DeepMap<keyof T, InternalState> = createDeepMap();
   const sentMessages: Map<string, InternalMessageUp> = new Map();
 
@@ -135,7 +135,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     connection = {
       status: 'Offline'
     };
-    connectionStatusSub.call(connection.status);
+    connectionStatusSub.emit(connection.status);
     internal.forEach((_event, _keys, state) => {
       update(state);
     });
@@ -149,7 +149,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       status: 'Connected',
       outgoing: out
     };
-    connectionStatusSub.call(connection.status);
+    connectionStatusSub.emit(connection.status);
     internal.forEach((_event, _keys, state) => {
       update(state);
     });
@@ -170,7 +170,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   }
 
   function update(intern: InternalState): void {
-    if (intern.sub.listenersCount() === 0) {
+    if (intern.sub.size() === 0) {
       ensureUnsubscribed(intern);
       return;
     }
@@ -470,7 +470,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       intern.status.type === 'Subscribed'
     ) {
       intern.state = getFlowClientState(intern.status);
-      intern.sub.call(intern.state);
+      intern.sub.emit(intern.state);
       return;
     }
     expectNever(intern.status);
@@ -764,7 +764,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       keys,
       status,
       state: getFlowClientState(status),
-      sub: Subscription.create({
+      sub: Subscription({
         onFirstSubscription: () => {
           update(intern);
         },

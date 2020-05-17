@@ -1,5 +1,5 @@
 import immerProduce, { enableMapSet } from 'immer';
-import { Subscription, SubscriptionCallback, Unsubscribe } from 'suub';
+import { Subscription, Unsubscribe, VoidSubscriptionCallback } from 'suub';
 
 enableMapSet();
 
@@ -14,7 +14,7 @@ export interface DeepMap<K extends string | number | symbol, T> {
   forEach(exec: (group: K, keys: Array<any>, value: T) => void): void;
   updateEach(exec: (group: K, keys: Array<any>, value: T) => T): void;
   getState(): DeepMapState<K, T>;
-  subscribe(listener: SubscriptionCallback<void>): Unsubscribe;
+  subscribe(callback: VoidSubscriptionCallback): Unsubscribe;
 }
 
 export type DeepMapState<K extends string | number | symbol, T> = Map<any, T | DeepMapState<K, T>>;
@@ -38,7 +38,7 @@ export function createDeepMap<K extends string | number | symbol, T>(
       }) as any);
 
   let internal: DeepMapState<K, T> = new Map();
-  const stateSub = Subscription.create();
+  const stateSub = Subscription();
 
   const result: DeepMap<K, T> = {
     get,
@@ -96,7 +96,7 @@ export function createDeepMap<K extends string | number | symbol, T>(
         }
       });
     });
-    stateSub.call();
+    stateSub.emit();
   }
 
   function remove(group: K, keys: Array<any>) {
@@ -144,7 +144,7 @@ export function createDeepMap<K extends string | number | symbol, T>(
         }
       }
     });
-    stateSub.call();
+    stateSub.emit();
   }
 
   function getInternal(obj: DeepMapState<K, T>, group: K, keys: Array<any>): T | undefined {
@@ -208,6 +208,6 @@ export function createDeepMap<K extends string | number | symbol, T>(
     internal = produce(internal, (draft: DeepMapState<K, T>) => {
       setInternal(draft, group, keys, value);
     });
-    stateSub.call();
+    stateSub.emit();
   }
 }
