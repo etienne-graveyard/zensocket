@@ -1,4 +1,4 @@
-import { Unsubscribe, Subscription } from 'suub';
+import { Unsubscribe, Subscription, OnUnsubscribed } from 'suub';
 import {
   FlowClient,
   Flows,
@@ -158,10 +158,11 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   function subscribe<K extends keyof T>(
     event: K,
     query: T[K]['query'],
-    onState: (state: FlowClientState<T[K]['state']>) => void
+    onState: (state: FlowClientState<T[K]['state']>) => void,
+    onUnsubscribed?: OnUnsubscribed
   ): Unsubscribe {
     const state = ensureInternalState(event, queryToKeys(query), query);
-    return state.sub.subscribe(onState);
+    return state.sub.subscribe(onState, onUnsubscribed);
   }
 
   function get<K extends keyof T>(event: K, query: T[K]['query']): FlowClientState<T[K]['state']> {

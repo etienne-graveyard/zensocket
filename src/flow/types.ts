@@ -1,4 +1,4 @@
-import { Unsubscribe, SubscribeMethod } from 'suub';
+import { Unsubscribe, SubscribeMethod, OnUnsubscribed } from 'suub';
 import { ZensocketClient, ZensocketServer } from '../types';
 
 /**
@@ -56,7 +56,8 @@ export interface FlowClient<T extends Flows> extends ZensocketClient {
   subscribe<K extends keyof T>(
     event: K,
     query: T[K]['query'],
-    onState: (state: FlowClientState<T[K]['state']>) => void
+    onState: (state: FlowClientState<T[K]['state']>) => void,
+    onUnsubscribed?: OnUnsubscribed
   ): Unsubscribe;
   get<K extends keyof T>(event: K, query: T[K]['query']): FlowClientState<T[K]['state']>;
   connectionStatus: {
