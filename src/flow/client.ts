@@ -454,21 +454,19 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
   }
 
   function stateChanged(intern: InternalState): void {
-    if (
-      intern.status.type === 'Subscribing' ||
-      intern.status.type === 'Void' ||
-      intern.status.type === 'CancelSubscribing' ||
-      intern.status.type === 'Deleted' ||
-      intern.status.type === 'Error' ||
-      intern.status.type === 'UnsubscribedByServer'
-    ) {
+    if (intern.status.type === 'Error') {
       return;
     }
     if (
       intern.status.type === 'Offline' ||
       intern.status.type === 'Resubscribing' ||
       intern.status.type === 'Unsubscribing' ||
-      intern.status.type === 'Subscribed'
+      intern.status.type === 'Subscribed' ||
+      intern.status.type === 'UnsubscribedByServer' ||
+      intern.status.type === 'Subscribing' ||
+      intern.status.type === 'Void' ||
+      intern.status.type === 'CancelSubscribing' ||
+      intern.status.type === 'Deleted'
     ) {
       intern.state = getFlowClientState(intern.status);
       intern.sub.emit(intern.state);
@@ -564,6 +562,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
         return;
       }
       if (message.type === 'UnsubscribedByServer') {
+        console.log('UnsubscribedByServer', intern.status.type);
         if (
           intern.status.type === 'CancelSubscribing' ||
           intern.status.type === 'Unsubscribing' ||
@@ -577,6 +576,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
           intern.status.type === 'Resubscribing' ||
           intern.status.type === 'Subscribed'
         ) {
+          console.log('set UnsubscribedByServer');
           setStatus(intern, {
             type: 'UnsubscribedByServer',
             store: intern.status.store
