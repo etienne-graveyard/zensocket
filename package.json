@@ -18,14 +18,14 @@
   },
   "dependencies": {
     "cuid": "^2.1.8",
-    "immer": "^6.0.5",
+    "immer": "^6.0.8",
     "suub": "^3.0.0"
   },
   "devDependencies": {
-    "@types/jest": "^25.2.2",
+    "@types/jest": "^25.2.3",
     "np": "^6.2.3",
     "tsdx": "^0.13.2",
-    "typescript": "^3.9.2"
+    "typescript": "^3.9.3"
   },
   "description": "An base for creating a websocket server.",
   "directories": {
