@@ -42,6 +42,7 @@ interface InternalState {
   event: string;
   query: QueryObj | null;
   keys: Array<any>;
+  unsubTimer: null | NodeJS.Timeout;
   sub: Subscription<FlowClientState<any>>;
   status: InternalStateStatus;
   state: FlowClientState<any>;
@@ -94,7 +95,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       return { status: 'CancelSubscribing' };
     }
     if (status.type === 'Deleted') {
-      throw new Error(`Cannot get state of deleted`);
+      return { status: 'Void' };
     }
     if (status.type === 'Offline') {
       return { status: 'Offline', state: status.store.getState() };
@@ -172,7 +173,9 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
 
   function update(intern: InternalState): void {
     if (intern.sub.size() === 0) {
-      ensureUnsubscribed(intern);
+      if (intern.unsubTimer === null) {
+        ensureUnsubscribed(intern);
+      }
       return;
     }
     ensureSubscribed(intern);
@@ -562,7 +565,6 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
         return;
       }
       if (message.type === 'UnsubscribedByServer') {
-        console.log('UnsubscribedByServer', intern.status.type);
         if (
           intern.status.type === 'CancelSubscribing' ||
           intern.status.type === 'Unsubscribing' ||
@@ -576,7 +578,6 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
           intern.status.type === 'Resubscribing' ||
           intern.status.type === 'Subscribed'
         ) {
-          console.log('set UnsubscribedByServer');
           setStatus(intern, {
             type: 'UnsubscribedByServer',
             store: intern.status.store
@@ -618,7 +619,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       return withUp(out);
     }
     if (message.type === 'Unsubscribed') {
-      const out = popSentMessage(message.responseTo, 'Subscribe');
+      const out = popSentMessage(message.responseTo, 'Unsubscribe');
       if (!out) {
         return; // canceled
       }
@@ -628,7 +629,7 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       if (message.responseTo === null) {
         return withUp(null);
       }
-      const out = popSentMessage(message.responseTo, 'Subscribe');
+      const out = popSentMessage(message.responseTo, null);
       if (!out) {
         return; // canceled
       }
@@ -701,15 +702,18 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     return;
   }
 
-  function popSentMessage<K extends InternalMessageUpType>(
+  function popSentMessage<K extends InternalMessageUpType = InternalMessageUpType>(
     id: string,
-    expectedType: K
+    expectedType: K | null
   ): InternalMessageUp<K> | null {
     const out = sentMessages.get(id);
     if (!out) {
       return null;
     }
     sentMessages.delete(id);
+    if (expectedType === null) {
+      return out as any;
+    }
     if (out.type !== expectedType) {
       throw new Error(`Invalid message type`);
     }
@@ -764,16 +768,25 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
       query,
       keys,
       status,
+      unsubTimer: null,
       state: getFlowClientState(status),
       sub: Subscription({
         onFirstSubscription: () => {
+          if (intern.unsubTimer !== null) {
+            clearTimeout(intern.unsubTimer);
+            intern.unsubTimer = null;
+          }
           update(intern);
         },
         onLastUnsubscribe: () => {
-          // TODO: handle unsub delay !
-          console.log(`TODO: Handle unsubscribeDelay`);
-          console.log({ unsubscribeDelay });
-          update(intern);
+          if (unsubscribeDelay === false) {
+            update(intern);
+            return;
+          }
+          intern.unsubTimer = setTimeout(() => {
+            intern.unsubTimer = null;
+            update(intern);
+          }, unsubscribeDelay);
         }
       })
     };

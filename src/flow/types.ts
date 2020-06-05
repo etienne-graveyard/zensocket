@@ -38,7 +38,7 @@ export interface FlowServerMountParams<Query, Message, Context> {
 }
 
 export interface FlowServerMountResult<Initial> {
-  getInitial: () => Initial;
+  getInitial: () => Promise<Initial>;
   unmount: () => void;
 }
 

@@ -22,11 +22,13 @@ type InternalState =
       status: 'mounting';
       cancel: () => void;
       messageId: string;
+      query: any;
     }
   | {
       status: 'mounted';
       unmount: () => void;
       getInitial: () => any;
+      query: any;
     };
 
 export function createFlowServer<T extends Flows, Context>(
@@ -44,8 +46,8 @@ export function createFlowServer<T extends Flows, Context>(
   };
 
   function destroy(): void {
-    internal.forEach((event, keys) => {
-      unmount(event, keys);
+    internal.forEach((event, _keys, state) => {
+      unmount(event, state.query);
     });
   }
 
@@ -148,7 +150,8 @@ export function createFlowServer<T extends Flows, Context>(
         messageId: message.id,
         cancel: () => {
           canceled = true;
-        }
+        },
+        query: message.query
       });
       const res = await safeRun(() =>
         mount({
@@ -176,12 +179,14 @@ export function createFlowServer<T extends Flows, Context>(
       internal.set(message.event, keys, {
         status: 'mounted',
         unmount,
-        getInitial
+        getInitial,
+        query: message.query
       });
+      const initial = await getInitial();
       const mes: InternalMessageDown = {
         zenid,
         type: 'Subscribed',
-        initial: getInitial(),
+        initial: initial,
         responseTo: message.id
       };
       outgoing(mes);
