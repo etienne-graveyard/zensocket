@@ -10,22 +10,22 @@
   "module": "dist/zensocket.esm.js",
   "typings": "dist/index.d.ts",
   "scripts": {
-    "build": "tsdx build --target web",
-    "start": "tsdx watch --noClean --target web",
+    "build": "tsdx build",
+    "start": "tsdx watch --noClean",
     "test": "tsdx test",
     "typecheck": "tsc --noEmit",
     "pub": "yarn build && np"
   },
   "dependencies": {
     "cuid": "^2.1.8",
-    "immer": "^6.0.8",
-    "suub": "^3.0.0"
+    "immer": "^7.0.7",
+    "suub": "^3.0.1"
   },
   "devDependencies": {
-    "@types/jest": "^25.2.3",
-    "np": "^6.2.3",
+    "@types/jest": "^26.0.8",
+    "np": "^6.3.2",
     "tsdx": "^0.13.2",
-    "typescript": "^3.9.3"
+    "typescript": "^3.9.7"
   },
   "description": "An base for creating a websocket server.",
   "directories": {
