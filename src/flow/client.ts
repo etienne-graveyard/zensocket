@@ -364,11 +364,10 @@ export function createFlowClient<T extends Flows>(options: FlowClientOptions<T>)
     if (intern.status.type === 'Subscribing') {
       popSentMessage(intern.status.messageId, 'Subscribe');
       const messageId = sendUnsubscribeMessage(intern.event, intern.query);
-      intern.status ==
-        {
-          type: 'CancelSubscribing',
-          messageId
-        };
+      setStatus(intern, {
+        type: 'CancelSubscribing',
+        messageId
+      });
       return;
     }
     if (intern.status.type === 'Subscribed') {
