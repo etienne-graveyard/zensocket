@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "cuid": "^2.1.8",
-    "immer": "^8.0.1",
+    "immer": "^9.0.6",
     "suub": "^3.1.3"
   },
   "devDependencies": {
